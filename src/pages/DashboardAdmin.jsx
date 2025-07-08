@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, storage } from '../firebase/config';
-import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, where } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { collection, addDoc, getDocs, doc, getDoc, updateDoc, deleteDoc, query, where, Timestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import Toast from '../components/Toast';
 
 const DEFAULT_PROFILE_IMAGE = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png';
 
@@ -102,6 +103,27 @@ function DashboardAdmin() {
     otro: []
   });
   
+  // Estado para los mensajes Toast
+  const [toast, setToast] = useState({
+    visible: false,
+    message: '',
+    type: 'success'
+  });
+
+  // Función para mostrar mensajes
+  const showToast = (message, type = 'success') => {
+    setToast({
+      visible: true,
+      message,
+      type
+    });
+  };
+
+  // Función para cerrar el toast
+  const closeToast = () => {
+    setToast({ ...toast, visible: false });
+  };
+  
   // Cargar perfil de usuario
   useEffect(() => {
     const cargarPerfilUsuario = async () => {
@@ -190,10 +212,10 @@ function DashboardAdmin() {
         categoria: CATEGORIAS_PRODUCTOS[0] // Mantener categoría por defecto
       });
 
-      alert("Producto agregado exitosamente!");
+      showToast("Producto agregado exitosamente!");
     } catch (error) {
       console.error("Error detallado al agregar producto:", error);
-      alert("Error al agregar producto: " + error.message);
+      showToast("Error al agregar producto: " + error.message, 'error');
     }
   };
   
@@ -381,10 +403,10 @@ function DashboardAdmin() {
         await deleteDoc(doc(db, "productos", producto.id));
       }
       setProductos(productos.filter(p => p.id !== producto.id));
-      alert("Producto eliminado exitosamente!");
+      showToast('Producto eliminado correctamente');
     } catch (error) {
       console.error("Error al eliminar producto:", error);
-      alert("Error al eliminar producto: " + error.message);
+      showToast(`Error al eliminar producto: ${error.message}`, 'error');
     }
   };
 
@@ -429,10 +451,10 @@ function DashboardAdmin() {
           imagenURL: AVATAR_OPTIONS[0]
         });
 
-        alert("Usuario agregado exitosamente!");
+        showToast("Usuario agregado exitosamente!");
       } catch (error) {
         console.error("Error al agregar usuario:", error);
-        alert("Error al agregar usuario: " + error.message);
+        showToast("Error al agregar usuario: " + error.message, 'error');
       }
     }
   };
@@ -444,10 +466,10 @@ function DashboardAdmin() {
       
       // Actualizar estado local
       setVendedores(vendedores.filter(v => v.id !== vendedor.id));
-      alert("Usuario eliminado exitosamente!");
+      showToast('Usuario eliminado correctamente');
     } catch (error) {
       console.error("Error al eliminar usuario:", error);
-      alert("Error al eliminar usuario: " + error.message);
+      showToast(`Error al eliminar usuario: ${error.message}`, 'error');
     }
   };
 
@@ -483,10 +505,10 @@ function DashboardAdmin() {
       );
       setProductos(nuevosProductos);
       setEditandoProducto(null);
-      alert("Producto actualizado exitosamente!");
+      showToast("Producto actualizado exitosamente!");
     } catch (error) {
       console.error("Error al editar producto:", error);
-      alert("Error al editar producto: " + error.message);
+      showToast("Error al editar producto: " + error.message, 'error');
     }
   };
 
@@ -537,10 +559,10 @@ function DashboardAdmin() {
       }
 
       setEditandoVendedor(null);
-      alert("Usuario actualizado exitosamente!");
+      showToast("Usuario actualizado exitosamente!");
     } catch (error) {
       console.error("Error al editar usuario:", error);
-      alert("Error al editar usuario: " + error.message);
+      showToast("Error al editar usuario: " + error.message, 'error');
     }
   };
 
@@ -1509,227 +1531,237 @@ function DashboardAdmin() {
   };
 
   return (
-    <div style={{ 
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100vh',
-      fontSize: getResponsiveSize('14px', '16px')
-    }}>
-      {/* Barra superior móvil */}
-      {isMobile() && (
-        <div style={{
-          padding: '8px',
-          backgroundColor: '#f8f9fa',
-          borderBottom: '1px solid #dee2e6',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          position: 'sticky',
-          top: 0,
-          zIndex: 1000
-        }}>
-          <button
-            onClick={() => setMenuMovilAbierto(!menuMovilAbierto)}
-            style={{
-              padding: '6px',
-              backgroundColor: 'transparent',
-              border: 'none',
-              fontSize: '20px'
-            }}
-          >
-            ☰
-          </button>
-          <h3 style={{ margin: 0, fontSize: '16px' }}>{userProfile.nombre}</h3>
-        </div>
-      )}
-
-      {/* Barra lateral */}
-      <div style={{
-        width: getResponsiveSize('80%', '250px'),
-        height: '100vh',
-        backgroundColor: '#f8f9fa',
-        borderRight: '1px solid #dee2e6',
-        position: 'fixed',
-        left: isMobile() ? (menuMovilAbierto ? '0' : '-80%') : '0',
-        top: 0,
-        transition: 'left 0.3s ease',
-        zIndex: 1001,
-        display: 'flex',
-        flexDirection: 'column'
-      }}>
-        {/* Sección superior fija */}
-        <div style={{
-          padding: getResponsiveSize('15px', '20px'),
-          borderBottom: '1px solid #dee2e6',
-          backgroundColor: '#f8f9fa'
-        }}>
-          {/* Profile section */}
-          <div style={{
-            padding: '15px',
-            backgroundColor: 'white',
-            borderRadius: '10px',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          }}>
-            <div style={{ 
-              width: getResponsiveSize('60px', '80px'),
-              height: getResponsiveSize('60px', '80px'),
-              margin: '0 auto 15px auto',
-              position: 'relative'
-            }}>
-              <img 
-                src={userProfile.imagenURL || DEFAULT_PROFILE_IMAGE}
-                alt="User Profile"
-                onError={handleImageError}
-                loading="lazy"
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  borderRadius: '50%',
-                  objectFit: 'cover',
-                  border: '3px solid #007bff',
-                  backgroundColor: '#f8f9fa'
-                }}
-              />
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <h3 style={{ 
-                margin: '0',
-                fontSize: '1.1rem',
-                color: '#2c3e50'
-              }}>
-                {userProfile.nombre}
-              </h3>
-              <span style={{
-                display: 'inline-block',
-                padding: '4px 8px',
-                backgroundColor: '#007bff',
-                color: 'white',
-                borderRadius: '12px',
-                fontSize: '0.8rem',
-                marginTop: '5px'
-              }}>
-                {userProfile.rol.charAt(0).toUpperCase() + userProfile.rol.slice(1)}
-              </span>
-            </div>
-          </div>
-          <h2 style={{ marginTop: '20px', marginBottom: '10px' }}>Panel Admin</h2>
-        </div>
-
-        {/* Sección de navegación con scroll */}
-        <nav style={{ 
-          padding: '20px',
-          flex: 1,
-          overflowY: 'auto'
-        }}>
-          <button
-            onClick={() => setSeccionActiva('inventario')}
-            style={{
-              padding: '10px',
-              textAlign: 'left',
-              backgroundColor: seccionActiva === 'inventario' ? '#007bff' : 'transparent',
-              color: seccionActiva === 'inventario' ? 'white' : 'black',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer',
-              width: '100%',
-              marginBottom: '10px'
-            }}
-          >
-            📦 Gestión de Inventario
-          </button>
-          <button
-            onClick={() => setSeccionActiva('usuarios')}
-            style={{
-              padding: '10px',
-              textAlign: 'left',
-              backgroundColor: seccionActiva === 'usuarios' ? '#007bff' : 'transparent',
-              color: seccionActiva === 'usuarios' ? 'white' : 'black',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer',
-              width: '100%',
-              marginBottom: '10px'
-            }}
-          >
-            👥 Gestión de Usuarios
-          </button>
-          <button
-            onClick={() => setSeccionActiva('ventas')}
-            style={{
-              padding: '10px',
-              textAlign: 'left',
-              backgroundColor: seccionActiva === 'ventas' ? '#007bff' : 'transparent',
-              color: seccionActiva === 'ventas' ? 'white' : 'black',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer',
-              width: '100%',
-              marginBottom: '10px'
-            }}
-          >
-            📊 Panel de Ventas
-          </button>
-        </nav>
-
-        {/* Sección inferior fija */}
-        <div style={{
-          padding: '20px',
-          borderTop: '1px solid #dee2e6',
-          backgroundColor: '#f8f9fa'
-        }}>
-          <button
-            onClick={handleLogout}
-            style={{
-              width: '100%',
-              padding: '12px',
-              backgroundColor: '#dc3545',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              transition: 'background-color 0.2s'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#c82333'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#dc3545'}
-          >
-            <span>🚪</span>
-            Cerrar Sesión
-          </button>
-        </div>
-      </div>
-
-      {/* Overlay for mobile */}
-      {isMobile() && menuMovilAbierto && (
-        <div
-          onClick={() => setMenuMovilAbierto(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            zIndex: 1000
-          }}
+    <>
+      {/* Toast notifications */}
+      {toast.visible && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={closeToast} 
+          duration={3000} 
         />
       )}
-
-      {/* Main content */}
+      
       <div style={{ 
-        marginLeft: isMobile() ? '0' : '250px',
-        flex: 1,
-        padding: getResponsiveSize('10px', '40px'),
-        height: '100vh',
-        overflowY: 'auto',
-        paddingBottom: isMobile() ? '60px' : '40px'
+        display: 'flex',
+        height: '100vh'
       }}>
-        {renderContenido()}
+        {/* Barra superior móvil */}
+        {isMobile() && (
+          <div style={{
+            padding: '8px',
+            backgroundColor: '#f8f9fa',
+            borderBottom: '1px solid #dee2e6',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            position: 'sticky',
+            top: 0,
+            zIndex: 1000
+          }}>
+            <button
+              onClick={() => setMenuMovilAbierto(!menuMovilAbierto)}
+              style={{
+                padding: '6px',
+                backgroundColor: 'transparent',
+                border: 'none',
+                fontSize: '20px'
+              }}
+            >
+              ☰
+            </button>
+            <h3 style={{ margin: 0, fontSize: '16px' }}>{userProfile.nombre}</h3>
+          </div>
+        )}
+
+        {/* Barra lateral */}
+        <div style={{
+          width: getResponsiveSize('80%', '250px'),
+          height: '100vh',
+          backgroundColor: '#f8f9fa',
+          borderRight: '1px solid #dee2e6',
+          position: 'fixed',
+          left: isMobile() ? (menuMovilAbierto ? '0' : '-80%') : '0',
+          top: 0,
+          transition: 'left 0.3s ease',
+          zIndex: 1001,
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          {/* Sección superior fija */}
+          <div style={{
+            padding: getResponsiveSize('15px', '20px'),
+            borderBottom: '1px solid #dee2e6',
+            backgroundColor: '#f8f9fa'
+          }}>
+            {/* Profile section */}
+            <div style={{
+              padding: '15px',
+              backgroundColor: 'white',
+              borderRadius: '10px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            }}>
+              <div style={{ 
+                width: getResponsiveSize('60px', '80px'),
+                height: getResponsiveSize('60px', '80px'),
+                margin: '0 auto 15px auto',
+                position: 'relative'
+              }}>
+                <img 
+                  src={userProfile.imagenURL || DEFAULT_PROFILE_IMAGE}
+                  alt="User Profile"
+                  onError={handleImageError}
+                  loading="lazy"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    border: '3px solid #007bff',
+                    backgroundColor: '#f8f9fa'
+                  }}
+                />
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <h3 style={{ 
+                  margin: '0',
+                  fontSize: '1.1rem',
+                  color: '#2c3e50'
+                }}>
+                  {userProfile.nombre}
+                </h3>
+                <span style={{
+                  display: 'inline-block',
+                  padding: '4px 8px',
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  borderRadius: '12px',
+                  fontSize: '0.8rem',
+                  marginTop: '5px'
+                }}>
+                  {userProfile.rol.charAt(0).toUpperCase() + userProfile.rol.slice(1)}
+                </span>
+              </div>
+            </div>
+            <h2 style={{ marginTop: '20px', marginBottom: '10px' }}>Panel Admin</h2>
+          </div>
+
+          {/* Sección de navegación con scroll */}
+          <nav style={{ 
+            padding: '20px',
+            flex: 1,
+            overflowY: 'auto'
+          }}>
+            <button
+              onClick={() => setSeccionActiva('inventario')}
+              style={{
+                padding: '10px',
+                textAlign: 'left',
+                backgroundColor: seccionActiva === 'inventario' ? '#007bff' : 'transparent',
+                color: seccionActiva === 'inventario' ? 'white' : 'black',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+                width: '100%',
+                marginBottom: '10px'
+              }}
+            >
+              📦 Gestión de Inventario
+            </button>
+            <button
+              onClick={() => setSeccionActiva('usuarios')}
+              style={{
+                padding: '10px',
+                textAlign: 'left',
+                backgroundColor: seccionActiva === 'usuarios' ? '#007bff' : 'transparent',
+                color: seccionActiva === 'usuarios' ? 'white' : 'black',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+                width: '100%',
+                marginBottom: '10px'
+              }}
+            >
+              👥 Gestión de Usuarios
+            </button>
+            <button
+              onClick={() => setSeccionActiva('ventas')}
+              style={{
+                padding: '10px',
+                textAlign: 'left',
+                backgroundColor: seccionActiva === 'ventas' ? '#007bff' : 'transparent',
+                color: seccionActiva === 'ventas' ? 'white' : 'black',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+                width: '100%',
+                marginBottom: '10px'
+              }}
+            >
+              📊 Panel de Ventas
+            </button>
+          </nav>
+
+          {/* Sección inferior fija */}
+          <div style={{
+            padding: '20px',
+            borderTop: '1px solid #dee2e6',
+            backgroundColor: '#f8f9fa'
+          }}>
+            <button
+              onClick={handleLogout}
+              style={{
+                width: '100%',
+                padding: '12px',
+                backgroundColor: '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                transition: 'background-color 0.2s'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#c82333'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#dc3545'}
+            >
+              <span>🚪</span>
+              Cerrar Sesión
+            </button>
+          </div>
+        </div>
+
+        {/* Overlay for mobile */}
+        {isMobile() && menuMovilAbierto && (
+          <div
+            onClick={() => setMenuMovilAbierto(false)}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              zIndex: 1000
+            }}
+          />
+        )}
+
+        {/* Main content */}
+        <div style={{ 
+          marginLeft: isMobile() ? '0' : '250px',
+          flex: 1,
+          padding: getResponsiveSize('10px', '40px'),
+          height: '100vh',
+          overflowY: 'auto',
+          paddingBottom: isMobile() ? '60px' : '40px'
+        }}>
+          {renderContenido()}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

@@ -6,6 +6,7 @@ import { ref, getDownloadURL } from 'firebase/storage';
 import Factura from '../components/Factura';
 import EmailModal from '../components/EmailModal';
 import ClienteForm from '../components/ClienteForm';
+import Toast from '../components/Toast';
 import { useReactToPrint } from 'react-to-print';
 import { sendFacturaEmail } from '../utils/emailService';
 
@@ -104,6 +105,31 @@ function DashboardVendedor() {
     otro: 0
   });
   const facturaRef = useRef();
+  const ordenRef = useRef();
+  const [ordenesEnProceso, setOrdenesEnProceso] = useState([]);
+  const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
+  const [mostrarPreviewOrden, setMostrarPreviewOrden] = useState(false);
+
+  // Estado para los mensajes Toast
+  const [toast, setToast] = useState({
+    visible: false,
+    message: '',
+    type: 'success'
+  });
+
+  // Función para mostrar mensajes
+  const showToast = (message, type = 'success') => {
+    setToast({
+      visible: true,
+      message,
+      type
+    });
+  };
+
+  // Función para cerrar el toast
+  const closeToast = () => {
+    setToast({ ...toast, visible: false });
+  };
 
   // Cargar perfil de usuario
   useEffect(() => {
@@ -167,6 +193,9 @@ function DashboardVendedor() {
 
         // Load pending orders from waiters
         await cargarVentasPendientes();
+        
+        // Cargar órdenes en proceso de meseros
+        await cargarOrdenesEnProceso();
       } catch (error) {
         console.error("Error detallado al cargar datos:", error);
       }
@@ -176,7 +205,7 @@ function DashboardVendedor() {
 
   const agregarProductoVenta = (producto) => {
     if (producto.cantidadVenta >= producto.cantidad) {
-      alert('No hay suficiente stock');
+      showToast('No hay suficiente stock', 'warning');
       return;
     }
 
@@ -218,13 +247,13 @@ function DashboardVendedor() {
   const registrarVenta = async () => {
     try {
       if (!ventaActual.productos.length) {
-        alert('Agregue productos a la venta');
+        showToast('Por favor, agregue productos a la venta', 'warning');
         return;
       }
 
       if (ventaActual.metodoPago === 'efectivo' && 
           (!ventaActual.efectivo || ventaActual.efectivo < ventaActual.total)) {
-        alert('El efectivo recibido debe ser mayor o igual al total');
+        showToast('El efectivo recibido debe ser mayor o igual al total', 'error');
         return;
       }
 
@@ -264,15 +293,16 @@ function DashboardVendedor() {
         productos: [],
         total: 0,
         efectivo: '',
-        cambio: 0
+        cambio: 0,
+        metodoPago: 'efectivo'
       });
       setVentasDelDia([...ventasDelDia, ventaData]);
       setTotalDelDia(totalDelDia + ventaData.total);
 
-      alert('Venta registrada exitosamente');
+      showToast('Venta registrada exitosamente', 'success');
     } catch (error) {
       console.error("Error al registrar venta:", error);
-      alert('Error al registrar la venta');
+      showToast(`Error al registrar la venta: ${error.message}`, 'error');
     }
   };
 
@@ -983,6 +1013,249 @@ function DashboardVendedor() {
           </div>
         );
 
+      case 'ordenes_proceso':
+        return (
+          <div style={{ padding: '20px' }}>
+            <h2>🔄 Órdenes en Proceso</h2>
+            {ordenesEnProceso.length === 0 ? (
+              <p>No hay órdenes en proceso</p>
+            ) : (
+              <div style={{ 
+                display: 'grid',
+                gridTemplateColumns: isMobile() ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))',
+                gap: '15px',
+                marginTop: '20px'
+              }}>
+                {ordenesEnProceso.map(orden => (
+                  <div key={orden.id} style={{
+                    border: orden.estado === 'lista_para_cobrar' 
+                      ? '1px solid #28a745' 
+                      : '1px solid #ffc107',
+                    borderRadius: '12px',
+                    padding: '15px',
+                    backgroundColor: orden.estado === 'lista_para_cobrar' 
+                      ? '#f8fff8'
+                      : '#fff9e6',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}>
+                    {/* Cabecera de la tarjeta */}
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      marginBottom: '15px',
+                      borderBottom: orden.estado === 'lista_para_cobrar' 
+                        ? '1px solid #e6f5e6'
+                        : '1px solid #fff3cd',
+                      paddingBottom: '10px'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        color: orden.estado === 'lista_para_cobrar' ? '#28a745' : '#ffc107'
+                      }}>
+                        <span style={{ 
+                          backgroundColor: orden.estado === 'lista_para_cobrar' ? '#28a745' : '#ffc107', 
+                          color: orden.estado === 'lista_para_cobrar' ? 'white' : 'black', 
+                          width: '24px', 
+                          height: '24px',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '14px',
+                          fontWeight: 'bold'
+                        }}>
+                          {orden.mesa}
+                        </span>
+                        <h4 style={{ margin: 0 }}>Mesa {orden.mesa}</h4>
+                      </div>
+                      <div style={{ 
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-end'
+                      }}>
+                        <span style={{ 
+                          backgroundColor: orden.estado === 'lista_para_cobrar' ? '#28a745' : '#ffc107',
+                          color: orden.estado === 'lista_para_cobrar' ? 'white' : 'black',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          marginBottom: '5px'
+                        }}>
+                          {orden.estado === 'lista_para_cobrar' ? 'Lista para cobrar' : 'En preparación'}
+                        </span>
+                        <span style={{ 
+                          color: '#666',
+                          fontSize: '12px'
+                        }}>
+                          {orden.fecha?.seconds ? new Date(orden.fecha.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Lista de productos */}
+                    <div style={{ 
+                      flex: 1,
+                      marginBottom: '15px'
+                    }}>
+                      {orden.productos.map((prod, index) => (
+                        <div key={index} style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between',
+                          fontSize: '14px',
+                          padding: '8px 0',
+                          borderBottom: index < orden.productos.length - 1 ? '1px dashed #eee' : 'none'
+                        }}>
+                          <div style={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}>
+                            <span style={{
+                              backgroundColor: orden.estado === 'lista_para_cobrar' ? '#e8f5e8' : '#fff3cd',
+                              color: orden.estado === 'lista_para_cobrar' ? '#28a745' : '#ffc107',
+                              borderRadius: '50%',
+                              width: '20px',
+                              height: '20px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '12px',
+                              fontWeight: 'bold'
+                            }}>
+                              {prod.cantidadOrden}
+                            </span>
+                            <span style={{ fontWeight: '500' }}>{prod.nombre}</span>
+                          </div>
+                          <span style={{ 
+                            color: orden.estado === 'lista_para_cobrar' ? '#28a745' : '#ffc107',
+                            fontWeight: '600'
+                          }}>
+                            ${formatearNumero(prod.precio * prod.cantidadOrden)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Notas */}
+                    {orden.notas && (
+                      <div style={{ 
+                        marginBottom: '15px',
+                        padding: '10px',
+                        backgroundColor: orden.estado === 'lista_para_cobrar' ? '#e8f5e8' : '#fff3cd',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        borderLeft: orden.estado === 'lista_para_cobrar' 
+                          ? '3px solid #28a745' 
+                          : '3px solid #ffc107'
+                      }}>
+                        <div style={{ 
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          marginBottom: '5px',
+                          color: orden.estado === 'lista_para_cobrar' ? '#28a745' : '#ffc107',
+                          fontWeight: '600'
+                        }}>
+                          <span>📝</span>
+                          <span>Notas:</span>
+                        </div>
+                        <div style={{ 
+                          paddingLeft: '20px', 
+                          color: orden.estado === 'lista_para_cobrar' ? '#495057' : '#856404'
+                        }}>
+                          {orden.notas}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Footer con total y acciones */}
+                    <div style={{ 
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderTop: orden.estado === 'lista_para_cobrar' 
+                        ? '1px solid #e6f5e6' 
+                        : '1px solid #fff3cd',
+                      paddingTop: '15px',
+                      flexWrap: 'wrap',
+                      gap: '10px'
+                    }}>
+                      <div style={{ 
+                        backgroundColor: orden.estado === 'lista_para_cobrar' ? '#e8f5e8' : '#fff3cd',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                        color: '#212529'
+                      }}>
+                        Total: <span style={{ 
+                          color: orden.estado === 'lista_para_cobrar' ? '#28a745' : '#ffc107'
+                        }}>
+                          ${formatearNumero(orden.total)}
+                        </span>
+                      </div>
+                      <div style={{ 
+                        display: 'flex', 
+                        gap: '8px'
+                      }}>
+                        <button
+                          onClick={() => imprimirOrden(orden)}
+                          style={{
+                            padding: '8px 12px',
+                            backgroundColor: '#17a2b8',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontSize: getResponsiveSize('12px', '13px', '14px'),
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}
+                        >
+                          <span>🖨️</span>
+                          <span>Imprimir</span>
+                        </button>
+                        {orden.estado === 'lista_para_cobrar' && (
+                          <button
+                            onClick={() => procesarOrdenMesero({
+                              ...orden,
+                              productos: orden.productos.map(p => ({
+                                ...p,
+                                cantidadVenta: p.cantidadOrden
+                              }))
+                            })}
+                            style={{
+                              padding: '8px 12px',
+                              backgroundColor: '#28a745',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              fontSize: getResponsiveSize('12px', '13px', '14px'),
+                              fontWeight: '500',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px'
+                            }}
+                          >
+                            <span>💳</span>
+                            <span>Procesar Cobro</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+
       default:
         return null;
     }
@@ -1135,12 +1408,12 @@ function DashboardVendedor() {
         metodoPago: ventaParaFacturar.metodoPago
       });
       
-      alert('Factura enviada exitosamente al correo: ' + email);
+      showToast('Factura enviada exitosamente al correo: ' + email, 'success');
       setShowEmailModal(false);
       setClienteData(null);
     } catch (error) {
       console.error('Error al enviar email:', error);
-      throw error;
+      showToast(`Error al enviar email: ${error.message}`, 'error');
     }
   };
 
@@ -1186,15 +1459,145 @@ function DashboardVendedor() {
       // Reload pending orders
       await cargarVentasPendientes();
       
-      alert(`Orden de Mesa ${ventaPendiente.mesa} agregada para cobro`);
+      showToast(`Orden de Mesa ${ventaPendiente.mesa} agregada para cobro`, 'info');
     } catch (error) {
       console.error("Error al procesar orden:", error);
-      alert('Error al procesar la orden');
+      showToast('Error al procesar la orden', 'error');
     }
+  };
+
+  // Añadir función para cargar órdenes en proceso de meseros
+  const cargarOrdenesEnProceso = async () => {
+    try {
+      const ordenesQuery = query(
+        collection(db, "ordenes"),
+        where("estado", "in", ["en_proceso", "lista_para_cobrar"])
+      );
+      const ordenesSnapshot = await getDocs(ordenesQuery);
+      const ordenesData = ordenesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      setOrdenesEnProceso(ordenesData);
+    } catch (error) {
+      console.error("Error al cargar órdenes en proceso:", error);
+      showToast('Error al cargar órdenes en proceso', 'error');
+    }
+  };
+
+  // Añadir función para imprimir orden
+  const imprimirOrden = (orden) => {
+    setOrdenSeleccionada(orden);
+    setMostrarPreviewOrden(true);
+  };
+
+  // Función para imprimir la orden seleccionada
+  const handlePrintOrden = () => {
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Orden - Mesa ${ordenSeleccionada.mesa}</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              padding: 20px;
+              width: 80mm;
+              margin: 0 auto;
+            }
+            h1, h2, h3, h4 {
+              margin: 5px 0;
+              text-align: center;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 15px;
+            }
+            .item {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 5px;
+              border-bottom: 1px dashed #eee;
+              padding-bottom: 5px;
+            }
+            .total {
+              font-weight: bold;
+              text-align: right;
+              margin-top: 10px;
+              font-size: 1.2em;
+            }
+            .notas {
+              margin-top: 15px;
+              padding: 10px;
+              background-color: #f5f5f5;
+              border-radius: 5px;
+            }
+            .footer {
+              margin-top: 20px;
+              text-align: center;
+              font-size: 0.8em;
+            }
+            @media print {
+              body {
+                width: 80mm;
+                margin: 0;
+                padding: 5mm;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h3>ORDEN</h3>
+            <h4>Mesa ${ordenSeleccionada.mesa}</h4>
+            <p>Mesero: ${ordenSeleccionada.mesero}</p>
+            <p>Fecha: ${ordenSeleccionada.fecha?.seconds ? new Date(ordenSeleccionada.fecha.seconds * 1000).toLocaleString() : ''}</p>
+          </div>
+          
+          <div>
+            ${ordenSeleccionada.productos.map(prod => `
+              <div class="item">
+                <span>${prod.cantidadOrden} x ${prod.nombre}</span>
+                <span>$${formatearNumero(prod.precio * prod.cantidadOrden)}</span>
+              </div>
+            `).join('')}
+          </div>
+          
+          <div class="total">
+            Total: $${formatearNumero(ordenSeleccionada.total)}
+          </div>
+          
+          ${ordenSeleccionada.notas ? `
+            <div class="notas">
+              <strong>Notas:</strong><br>
+              ${ordenSeleccionada.notas}
+            </div>
+          ` : ''}
+          
+          <div class="footer">
+            ${ordenSeleccionada.estado === 'en_proceso' ? 'EN PREPARACIÓN' : 'LISTA PARA COBRAR'}
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
   };
 
   return (
     <>
+      {/* Toast notifications */}
+      {toast.visible && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={closeToast} 
+          duration={3000} 
+        />
+      )}
+
       <div style={{ 
         display: 'flex',
         flexDirection: 'column',
@@ -1353,6 +1756,45 @@ function DashboardVendedor() {
                   }}
                 >
                   📋 Historial de Ventas
+                </button>
+              </li>
+              {/* Nueva opción en el menú */}
+              <li style={{ marginBottom: '10px' }}>
+                <button 
+                  onClick={() => {
+                    setSeccionActiva('ordenes_proceso');
+                    cargarOrdenesEnProceso(); // Recargar al cambiar a esta sección
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    backgroundColor: seccionActiva === 'ordenes_proceso' ? '#9c27b0' : '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}
+                >
+                  <span>🔄 Órdenes en Proceso</span>
+                  {ordenesEnProceso.length > 0 && (
+                    <span style={{
+                      backgroundColor: 'white',
+                      color: '#9c27b0',
+                      borderRadius: '50%',
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '12px',
+                      fontWeight: 'bold'
+                    }}>
+                      {ordenesEnProceso.length}
+                    </span>
+                  )}
                 </button>
               </li>
               <li style={{ marginBottom: '10px' }}>
@@ -1562,6 +2004,131 @@ function DashboardVendedor() {
         onSend={handleSendEmail}
         initialEmail={clienteData?.email || ''}
       />
+
+      {/* Modal para previsualización de orden */}
+      {mostrarPreviewOrden && ordenSeleccionada && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '20px',
+            borderRadius: '8px',
+            width: '90%',
+            maxWidth: '400px',
+            maxHeight: '90vh',
+            overflow: 'auto'
+          }}>
+            <div style={{
+              position: 'sticky',
+              top: 0,
+              backgroundColor: 'white',
+              padding: '10px',
+              display: 'flex',
+              gap: '10px',
+              justifyContent: 'flex-end',
+              borderBottom: '1px solid #dee2e6',
+              marginBottom: '20px'
+            }}>
+              <button
+                onClick={handlePrintOrden}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                🖨️ Imprimir
+              </button>
+              <button
+                onClick={() => setMostrarPreviewOrden(false)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                ✖ Cerrar
+              </button>
+            </div>
+            
+            <div ref={ordenRef} style={{
+              fontFamily: 'Arial, sans-serif',
+              padding: '10px',
+              maxWidth: '300px',
+              margin: '0 auto'
+            }}>
+              <div style={{ textAlign: 'center', marginBottom: '15px' }}>
+                <h3 style={{ margin: '5px 0' }}>ORDEN</h3>
+                <h4 style={{ margin: '5px 0' }}>Mesa {ordenSeleccionada.mesa}</h4>
+                <p style={{ margin: '5px 0' }}>Mesero: {ordenSeleccionada.mesero}</p>
+                <p style={{ margin: '5px 0' }}>
+                  Fecha: {ordenSeleccionada.fecha?.seconds ? new Date(ordenSeleccionada.fecha.seconds * 1000).toLocaleString() : ''}
+                </p>
+              </div>
+              
+              <div>
+                {ordenSeleccionada.productos.map((prod, idx) => (
+                  <div key={idx} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: '5px',
+                    borderBottom: '1px dashed #eee',
+                    paddingBottom: '5px'
+                  }}>
+                    <span>{prod.cantidadOrden} x {prod.nombre}</span>
+                    <span>${formatearNumero(prod.precio * prod.cantidadOrden)}</span>
+                  </div>
+                ))}
+              </div>
+              
+              <div style={{ 
+                fontWeight: 'bold', 
+                textAlign: 'right', 
+                marginTop: '10px',
+                fontSize: '1.2em'
+              }}>
+                Total: ${formatearNumero(ordenSeleccionada.total)}
+              </div>
+              
+              {ordenSeleccionada.notas && (
+                <div style={{
+                  marginTop: '15px',
+                  padding: '10px',
+                  backgroundColor: '#f5f5f5',
+                  borderRadius: '5px'
+                }}>
+                  <strong>Notas:</strong><br />
+                  {ordenSeleccionada.notas}
+                </div>
+              )}
+              
+              <div style={{
+                marginTop: '20px',
+                textAlign: 'center',
+                fontSize: '0.8em'
+              }}>
+                {ordenSeleccionada.estado === 'en_proceso' ? 'EN PREPARACIÓN' : 'LISTA PARA COBRAR'}
+              </div>
+            </div>
+          </div>
+        </div>  
+      )}
     </>
   );
 }

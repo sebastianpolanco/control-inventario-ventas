@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase/config';
 import { collection, addDoc, getDocs, query, where, updateDoc, doc, deleteDoc, Timestamp } from 'firebase/firestore';
+import Toast from '../components/Toast';
 
 const DEFAULT_PROFILE_IMAGE = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png';
 
@@ -63,6 +64,13 @@ function DashboardMesero() {
   const [editandoOrden, setEditandoOrden] = useState(null);
   const [mostrarPanelOrden, setMostrarPanelOrden] = useState(false);
 
+  // Estado para los mensajes Toast
+  const [toast, setToast] = useState({
+    visible: false,
+    message: '',
+    type: 'success'
+  });
+
   // Funciones utilitarias
   const formatearNumero = (numero) => {
     return new Intl.NumberFormat('es-CO').format(numero);
@@ -77,6 +85,20 @@ function DashboardMesero() {
   const handleLogout = () => {
     localStorage.removeItem('user');
     navigate('/');
+  };
+
+  // Función mejorada para mostrar mensajes
+  const showToast = (message, type = 'success') => {
+    setToast({
+      visible: true,
+      message,
+      type
+    });
+  };
+
+  // Función para cerrar el toast
+  const closeToast = () => {
+    setToast({ ...toast, visible: false });
   };
 
   // Cargar datos iniciales
@@ -193,7 +215,7 @@ function DashboardMesero() {
   // Funciones para manejo de órdenes
   const agregarProductoOrden = (producto) => {
     if (producto.cantidad <= 0) {
-      alert('Producto sin stock');
+      showToast('Este producto no tiene stock disponible', 'warning');
       return;
     }
 
@@ -248,12 +270,12 @@ function DashboardMesero() {
   const tomarOrden = async () => {
     try {
       if (!ordenActual.productos.length) {
-        alert('Agregue productos a la orden');
+        showToast('Por favor, agregue productos a la orden', 'warning');
         return;
       }
 
       if (!ordenActual.mesa) {
-        alert('Seleccione una mesa');
+        showToast('Por favor, seleccione una mesa', 'warning');
         return;
       }
 
@@ -296,12 +318,13 @@ function DashboardMesero() {
       await cargarMesas();
       await cargarOrdenesEnProceso();
       
-      alert('Orden tomada exitosamente');
+      showToast('¡Orden tomada exitosamente!', 'success');
     } catch (error) {
       console.error("Error al tomar orden:", error);
-      alert('Error al tomar la orden');
+      showToast('Error al tomar la orden: ' + error.message, 'error');
     }
   };
+  
   const marcarListaParaCobrar = async (ordenId) => {
     try {
       await updateDoc(doc(db, "ordenes", ordenId), {
@@ -309,9 +332,10 @@ function DashboardMesero() {
       });
       
       await cargarOrdenesEnProceso();
-      alert('Orden marcada como lista para cobrar');
+      showToast('Orden marcada como lista para cobrar', 'success');
     } catch (error) {
       console.error("Error al marcar orden:", error);
+      showToast('Error al marcar la orden: ' + error.message, 'error');
     }
   };
 
@@ -323,6 +347,9 @@ function DashboardMesero() {
       total: orden.total,
       notas: orden.notas || ''
     });
+    
+    // Siempre redireccionar a la sección de tomar orden al editar cualquier orden
+    setSeccionActiva('tomar_orden');
   };
 
   const guardarCambiosOrden = async () => {
@@ -335,6 +362,11 @@ function DashboardMesero() {
         notas: ordenActual.notas,
         fechaActualizacion: Timestamp.now()
       };
+
+      // Si estamos editando una orden que estaba lista para cobrar, mantener su estado
+      if (editandoOrden.estado === 'lista_para_cobrar') {
+        ordenActualizada.estado = 'lista_para_cobrar';
+      }
 
       await updateDoc(doc(db, "ordenes", editandoOrden.id), ordenActualizada);
 
@@ -350,10 +382,15 @@ function DashboardMesero() {
       // Recargar órdenes
       await cargarOrdenesEnProceso();
       
-      alert('Orden actualizada exitosamente');
+      // Mostrar mensaje según el tipo de orden editada
+      const mensaje = editandoOrden.estado === 'lista_para_cobrar' 
+        ? 'Orden lista para cobrar actualizada exitosamente'
+        : 'Orden actualizada exitosamente';
+      
+      showToast(mensaje, 'success');
     } catch (error) {
       console.error("Error al actualizar orden:", error);
-      alert('Error al actualizar la orden');
+      showToast('Error al actualizar la orden: ' + error.message, 'error');
     }
   };
 
@@ -402,9 +439,10 @@ function DashboardMesero() {
       await cargarMesas();
       await cargarOrdenesEnProceso();
       
-      alert('Orden enviada al vendedor para cobro');
+      showToast('Orden enviada al vendedor para cobro', 'success');
     } catch (error) {
       console.error("Error al enviar orden:", error);
+      showToast('Error al enviar orden: ' + error.message, 'error');
     }
   };
 
@@ -821,78 +859,185 @@ function DashboardMesero() {
                 {ordenesEnProceso.map(orden => (
                   <div key={orden.id} style={{
                     border: '1px solid #dee2e6',
-                    borderRadius: '8px',
+                    borderRadius: '12px',
                     padding: '15px',
-                    backgroundColor: '#fff'
+                    backgroundColor: '#fff',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                    display: 'flex',
+                    flexDirection: 'column'
                   }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                      <h4>Mesa {orden.mesa}</h4>
-                      <span style={{ color: '#666' }}>
-                        {orden.fecha?.seconds ? new Date(orden.fecha.seconds * 1000).toLocaleTimeString() : ''}
-                      </span>
+                    {/* Cabecera de la tarjeta */}
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      marginBottom: '15px',
+                      borderBottom: '1px solid #f0f0f0',
+                      paddingBottom: '10px'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        color: '#333'
+                      }}>
+                        <span style={{ 
+                          backgroundColor: '#ffc107', 
+                          color: 'black', 
+                          width: '24px', 
+                          height: '24px',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '14px',
+                          fontWeight: 'bold'
+                        }}>
+                          {orden.mesa}
+                        </span>
+                        <h4 style={{ margin: 0 }}>Mesa {orden.mesa}</h4>
+                      </div>
+                      <div style={{ 
+                        color: '#666',
+                        fontSize: '13px', 
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}>
+                        <span>⏰</span>
+                        <span>{orden.fecha?.seconds ? new Date(orden.fecha.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span>
+                      </div>
                     </div>
                     
-                    <div style={{ marginBottom: '10px' }}>
+                    {/* Lista de productos */}
+                    <div style={{ 
+                      flex: 1,
+                      marginBottom: '15px'
+                    }}>
                       {orden.productos.map((prod, index) => (
                         <div key={index} style={{ 
                           display: 'flex', 
                           justifyContent: 'space-between',
                           fontSize: '14px',
-                          marginBottom: '5px'
+                          padding: '8px 0',
+                          borderBottom: index < orden.productos.length - 1 ? '1px dashed #eee' : 'none'
                         }}>
-                          <span>{prod.nombre} x{prod.cantidadOrden}</span>
-                          <span>${formatearNumero(prod.precio * prod.cantidadOrden)}</span>
+                          <div style={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}>
+                            <span style={{
+                              backgroundColor: '#e9ecef',
+                              color: '#495057',
+                              borderRadius: '50%',
+                              width: '20px',
+                              height: '20px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '12px',
+                              fontWeight: 'bold'
+                            }}>
+                              {prod.cantidadOrden}
+                            </span>
+                            <span style={{ fontWeight: '500' }}>{prod.nombre}</span>
+                          </div>
+                          <span style={{ 
+                            color: '#28a745',
+                            fontWeight: '600'
+                          }}>
+                            ${formatearNumero(prod.precio * prod.cantidadOrden)}
+                          </span>
                         </div>
                       ))}
                     </div>
 
+                    {/* Notas */}
                     {orden.notas && (
                       <div style={{ 
-                        marginBottom: '10px',
-                        padding: '8px',
+                        marginBottom: '15px',
+                        padding: '10px',
                         backgroundColor: '#f8f9fa',
-                        borderRadius: '4px',
-                        fontSize: '14px'
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        borderLeft: '3px solid #6c757d'
                       }}>
-                        <strong>Notas:</strong> {orden.notas}
+                        <div style={{ 
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          marginBottom: '5px',
+                          color: '#495057',
+                          fontWeight: '600'
+                        }}>
+                          <span>📝</span>
+                          <span>Notas:</span>
+                        </div>
+                        <div style={{ paddingLeft: '20px', color: '#666' }}>
+                          {orden.notas}
+                        </div>
                       </div>
-                    )}                    <div style={{ 
+                    )}
+
+                    {/* Footer con total y acciones */}
+                    <div style={{ 
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      marginTop: '15px',
-                      gap: '10px',
-                      flexWrap: 'wrap'
+                      borderTop: '1px solid #f0f0f0',
+                      paddingTop: '15px',
+                      flexWrap: 'wrap',
+                      gap: '10px'
                     }}>
-                      <strong>Total: ${formatearNumero(orden.total)}</strong>
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <div style={{ 
+                        backgroundColor: '#e9ecef',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        fontWeight: 'bold'
+                      }}>
+                        Total: <span style={{ color: '#28a745' }}>${formatearNumero(orden.total)}</span>
+                      </div>
+                      <div style={{ 
+                        display: 'flex', 
+                        gap: '8px'
+                      }}>
                         <button
                           onClick={() => editarOrden(orden)}
                           style={{
-                            padding: '6px 12px',
+                            padding: '8px 12px',
                             backgroundColor: '#ffc107',
                             color: 'black',
                             border: 'none',
-                            borderRadius: '4px',
+                            borderRadius: '8px',
                             cursor: 'pointer',
-                            fontSize: getResponsiveSize('12px', '13px', '14px')
+                            fontSize: getResponsiveSize('12px', '13px', '14px'),
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
                           }}
                         >
-                          ✏️ Editar
+                          <span>✏️</span>
+                          <span>Editar</span>
                         </button>
                         <button
                           onClick={() => marcarListaParaCobrar(orden.id)}
                           style={{
-                            padding: '6px 12px',
+                            padding: '8px 12px',
                             backgroundColor: '#007bff',
                             color: 'white',
                             border: 'none',
-                            borderRadius: '4px',
+                            borderRadius: '8px',
                             cursor: 'pointer',
-                            fontSize: getResponsiveSize('12px', '13px', '14px')
+                            fontSize: getResponsiveSize('12px', '13px', '14px'),
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
                           }}
                         >
-                          ✅ Lista para Cobrar
+                          <span>✅</span>
+                          <span>Lista para Cobrar</span>
                         </button>
                       </div>
                     </div>
@@ -919,63 +1064,188 @@ function DashboardMesero() {
                 {ordenesParaCobrar.map(orden => (
                   <div key={orden.id} style={{
                     border: '1px solid #28a745',
-                    borderRadius: '8px',
+                    borderRadius: '12px',
                     padding: '15px',
-                    backgroundColor: '#f8fff8'
+                    backgroundColor: '#f8fff8',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                    display: 'flex',
+                    flexDirection: 'column'
                   }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                      <h4>Mesa {orden.mesa}</h4>
-                      <span style={{ color: '#666' }}>
-                        {orden.fecha?.seconds ? new Date(orden.fecha.seconds * 1000).toLocaleTimeString() : ''}
-                      </span>
+                    {/* Cabecera de la tarjeta */}
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      marginBottom: '15px',
+                      borderBottom: '1px solid #e6f5e6',
+                      paddingBottom: '10px'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        color: '#28a745'
+                      }}>
+                        <span style={{ 
+                          backgroundColor: '#28a745', 
+                          color: 'white', 
+                          width: '24px', 
+                          height: '24px',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '14px',
+                          fontWeight: 'bold'
+                        }}>
+                          {orden.mesa}
+                        </span>
+                        <h4 style={{ margin: 0 }}>Mesa {orden.mesa}</h4>
+                      </div>
+                      <div style={{ 
+                        color: '#666',
+                        fontSize: '13px', 
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}>
+                        <span>⏰</span>
+                        <span>{orden.fecha?.seconds ? new Date(orden.fecha.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span>
+                      </div>
                     </div>
                     
-                    <div style={{ marginBottom: '10px' }}>
+                    {/* Lista de productos */}
+                    <div style={{ 
+                      flex: 1,
+                      marginBottom: '15px'
+                    }}>
                       {orden.productos.map((prod, index) => (
                         <div key={index} style={{ 
                           display: 'flex', 
                           justifyContent: 'space-between',
                           fontSize: '14px',
-                          marginBottom: '5px'
+                          padding: '8px 0',
+                          borderBottom: index < orden.productos.length - 1 ? '1px dashed #e6f5e6' : 'none'
                         }}>
-                          <span>{prod.nombre} x{prod.cantidadOrden}</span>
-                          <span>${formatearNumero(prod.precio * prod.cantidadOrden)}</span>
+                          <div style={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}>
+                            <span style={{
+                              backgroundColor: '#e8f5e8',
+                              color: '#28a745',
+                              borderRadius: '50%',
+                              width: '20px',
+                              height: '20px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '12px',
+                              fontWeight: 'bold'
+                            }}>
+                              {prod.cantidadOrden}
+                            </span>
+                            <span style={{ fontWeight: '500' }}>{prod.nombre}</span>
+                          </div>
+                          <span style={{ 
+                            color: '#28a745',
+                            fontWeight: '600'
+                          }}>
+                            ${formatearNumero(prod.precio * prod.cantidadOrden)}
+                          </span>
                         </div>
                       ))}
                     </div>
 
+                    {/* Notas */}
                     {orden.notas && (
                       <div style={{ 
-                        marginBottom: '10px',
-                        padding: '8px',
+                        marginBottom: '15px',
+                        padding: '10px',
                         backgroundColor: '#e8f5e8',
-                        borderRadius: '4px',
-                        fontSize: '14px'
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        borderLeft: '3px solid #28a745'
                       }}>
-                        <strong>Notas:</strong> {orden.notas}
+                        <div style={{ 
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          marginBottom: '5px',
+                          color: '#28a745',
+                          fontWeight: '600'
+                        }}>
+                          <span>📝</span>
+                          <span>Notas:</span>
+                        </div>
+                        <div style={{ paddingLeft: '20px', color: '#495057' }}>
+                          {orden.notas}
+                        </div>
                       </div>
                     )}
 
+                    {/* Footer con total y acciones */}
                     <div style={{ 
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      marginTop: '15px'
+                      borderTop: '1px solid #e6f5e6',
+                      paddingTop: '15px',
+                      flexWrap: 'wrap',
+                      gap: '10px'
                     }}>
-                      <strong>Total: ${formatearNumero(orden.total)}</strong>
-                      <button
-                        onClick={() => enviarACobrar(orden.id)}
-                        style={{
-                          padding: '8px 16px',
-                          backgroundColor: '#28a745',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        💳 Enviar a Cobrar
-                      </button>
+                      <div style={{ 
+                        backgroundColor: '#e8f5e8',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                        color: '#212529'
+                      }}>
+                        Total: <span style={{ color: '#28a745' }}>${formatearNumero(orden.total)}</span>
+                      </div>
+                      <div style={{ 
+                        display: 'flex', 
+                        gap: '8px'
+                      }}>
+                        <button
+                          onClick={() => editarOrden(orden)}
+                          style={{
+                            padding: '8px 12px',
+                            backgroundColor: '#ffc107',
+                            color: 'black',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontSize: getResponsiveSize('12px', '13px', '14px'),
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}
+                        >
+                          <span>✏️</span>
+                          <span>Editar</span>
+                        </button>
+                        <button
+                          onClick={() => enviarACobrar(orden.id)}
+                          style={{
+                            padding: '8px 12px',
+                            backgroundColor: '#28a745',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontSize: getResponsiveSize('12px', '13px', '14px'),
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}
+                        >
+                          <span>💳</span>
+                          <span>Enviar a Cobrar</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1085,302 +1355,312 @@ function DashboardMesero() {
   );
 
   return (
-    <>      {/* Mobile Header */}
-    {isMobile() && (
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: '50px',
-        padding: '8px 15px',
-        backgroundColor: '#ffffff',
-        borderBottom: '1px solid #dee2e6',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        zIndex: 1000,
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-      }}>
-        <button
-          onClick={() => setMenuMovilAbierto(!menuMovilAbierto)}
-          style={{
-            padding: '8px',
-            backgroundColor: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            fontSize: '16px',
-            cursor: 'pointer'
-          }}
-        >
-          ☰
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img 
-            src={userProfile.imagenURL}
-            alt={userProfile.nombre}
-            onError={handleImageError}
-            style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '50%',
-              objectFit: 'cover',
-              border: '1px solid #007bff'
-            }}
-          />
-          <h3 style={{ margin: 0, fontSize: '14px', color: '#2c3e50' }}>
-            {userProfile.nombre}
-          </h3>
-        </div>
-      </div>
-    )}
-
-    {/* Main Layout Container */}
-    <div style={{ 
-      position: 'relative',
-      height: '100vh',
-      overflow: 'hidden'
-    }}>
-        {/* Sidebar */}
-      <div style={{
-        width: getResponsiveSize('250px', '240px', '250px'),
-        height: '100vh',
-        backgroundColor: '#f8f9fa',
-        borderRight: '1px solid #dee2e6',
-        position: isMobile() ? 'fixed' : 'fixed',
-        left: isMobile() ? (menuMovilAbierto ? '0' : '-250px') : '0',
-        top: 0,
-        transition: isMobile() ? 'left 0.3s ease' : 'none',
-        zIndex: isMobile() ? 1001 : 1000,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        flexShrink: 0
-      }}>
-        
-        {/* Perfil del mesero */}
+    <>      {/* Toast notifications */}
+      {toast.visible && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={closeToast} 
+          duration={3000} 
+        />
+      )}
+      
+      {/* Mobile Header */}
+      {isMobile() && (
         <div style={{
-          padding: getResponsiveSize('10px', '15px', '20px'),
-          borderBottom: '1px solid #dee2e6',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '50px',
+          padding: '8px 15px',
           backgroundColor: '#ffffff',
-          flexShrink: 0
-        }}>
-          <div style={{
-            padding: getResponsiveSize('10px', '12px', '15px'),
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            border: '1px solid #e9ecef'
-          }}>
-            <div style={{ 
-              width: getResponsiveSize('50px', '60px', '70px'),
-              height: getResponsiveSize('50px', '60px', '70px'),
-              margin: '0 auto 10px auto',
-              position: 'relative'
-            }}>
-              <img 
-                src={userProfile.imagenURL}
-                alt={userProfile.nombre}
-                onError={handleImageError}
-                loading="lazy"
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  borderRadius: '50%',
-                  objectFit: 'cover',
-                  border: '2px solid #007bff',
-                  backgroundColor: '#f8f9fa'
-                }}
-              />
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <h3 style={{ 
-                margin: '0 0 5px 0',
-                fontSize: getResponsiveSize('14px', '16px', '18px'),
-                color: '#2c3e50',
-                fontWeight: '600'
-              }}>
-                {userProfile.nombre}
-              </h3>
-              <span style={{
-                display: 'inline-block',
-                padding: '3px 8px',
-                backgroundColor: '#ffc107',
-                color: 'black',
-                borderRadius: '12px',
-                fontSize: getResponsiveSize('11px', '12px', '13px'),
-                fontWeight: '500'
-              }}>
-                Mesero
-              </span>
-            </div>
-          </div>
-        </div>          {/* Navegación */}
-        <nav style={{
-          padding: getResponsiveSize('10px', '15px', '20px'),
-          flex: 1,
-          overflowY: 'auto'
-        }}>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            <li style={{ marginBottom: getResponsiveSize('8px', '10px', '10px') }}>
-              <button 
-                onClick={() => {
-                  setSeccionActiva('panel');
-                  if (isMobile()) setMenuMovilAbierto(false);
-                }}
-                style={{
-                  width: '100%',
-                  padding: getResponsiveSize('8px', '10px', '10px'),
-                  backgroundColor: seccionActiva === 'panel' ? '#007bff' : '#6c757d',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  fontSize: getResponsiveSize('13px', '14px', '14px'),
-                  fontWeight: '500',
-                  transition: 'background-color 0.2s'
-                }}
-              >
-                📊 Panel Principal
-              </button>
-            </li>
-            <li style={{ marginBottom: getResponsiveSize('8px', '10px', '10px') }}>
-              <button 
-                onClick={() => {
-                  setSeccionActiva('tomar_orden');
-                  if (isMobile()) setMenuMovilAbierto(false);
-                }}
-                style={{
-                  width: '100%',
-                  padding: getResponsiveSize('8px', '10px', '10px'),
-                  backgroundColor: seccionActiva === 'tomar_orden' ? '#28a745' : '#6c757d',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  fontSize: getResponsiveSize('13px', '14px', '14px'),
-                  fontWeight: '500',
-                  transition: 'background-color 0.2s'
-                }}
-              >
-                🍽️ Tomar Orden
-              </button>
-            </li>
-            <li style={{ marginBottom: getResponsiveSize('8px', '10px', '10px') }}>
-              <button 
-                onClick={() => {
-                  setSeccionActiva('ordenes_proceso');
-                  if (isMobile()) setMenuMovilAbierto(false);
-                }}
-                style={{
-                  width: '100%',
-                  padding: getResponsiveSize('8px', '10px', '10px'),
-                  backgroundColor: seccionActiva === 'ordenes_proceso' ? '#ffc107' : '#6c757d',
-                  color: seccionActiva === 'ordenes_proceso' ? 'black' : 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  fontSize: getResponsiveSize('13px', '14px', '14px'),
-                  fontWeight: '500',
-                  transition: 'background-color 0.2s'
-                }}
-              >
-                ⏳ En Proceso ({ordenesEnProceso.length})
-              </button>
-            </li>
-            <li style={{ marginBottom: getResponsiveSize('8px', '10px', '10px') }}>
-              <button 
-                onClick={() => {
-                  setSeccionActiva('ordenes_cobrar');
-                  if (isMobile()) setMenuMovilAbierto(false);
-                }}
-                style={{
-                  width: '100%',
-                  padding: getResponsiveSize('8px', '10px', '10px'),
-                  backgroundColor: seccionActiva === 'ordenes_cobrar' ? '#17a2b8' : '#6c757d',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  fontSize: getResponsiveSize('13px', '14px', '14px'),
-                  fontWeight: '500',
-                  transition: 'background-color 0.2s'
-                }}
-              >
-                💰 Para Cobrar ({ordenesParaCobrar.length})
-              </button>
-            </li>
-          </ul>
-        </nav>          {/* Botón de cerrar sesión - Fixed position */}
-        <div style={{
-          padding: getResponsiveSize('10px', '15px', '20px'),
-          borderTop: '1px solid #dee2e6',
-          backgroundColor: '#f8f9fa',
-          flexShrink: 0,
-          marginTop: 'auto', // This pushes it to the bottom
-          position: 'sticky',
-          bottom: 0
+          borderBottom: '1px solid #dee2e6',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          zIndex: 1000,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
         }}>
           <button
-            onClick={handleLogout}
+            onClick={() => setMenuMovilAbierto(!menuMovilAbierto)}
             style={{
-              width: '100%',
-              padding: getResponsiveSize('10px', '12px', '12px'),
-              backgroundColor: '#dc3545',
+              padding: '8px',
+              backgroundColor: '#007bff',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              transition: 'background-color 0.2s',
-              fontSize: getResponsiveSize('13px', '14px', '14px'),
-              fontWeight: '500'
+              fontSize: '16px',
+              cursor: 'pointer'
             }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#c82333'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#dc3545'}
           >
-            <span>🚪</span>
-            Cerrar Sesión
+            ☰
           </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <img 
+              src={userProfile.imagenURL}
+              alt={userProfile.nombre}
+              onError={handleImageError}
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '1px solid #007bff'
+              }}
+            />
+            <h3 style={{ margin: 0, fontSize: '14px', color: '#2c3e50' }}>
+              {userProfile.nombre}
+            </h3>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Mobile Overlay */}
-      {isMobile() && menuMovilAbierto && (
-        <div
-          onClick={() => setMenuMovilAbierto(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            zIndex: 1000
-          }}
-        />
-      )}        {/* Main Content - Fixed positioning to avoid overlap */}
+      {/* Main Layout Container */}
       <div style={{ 
-        position: 'absolute',
-        left: isMobile() ? '0' : getResponsiveSize('250px', '240px', '250px'),
-        right: '0',
-        top: '0',
-        bottom: '0',
-        padding: getResponsiveSize('10px', '15px', '20px'),
-        paddingTop: isMobile() ? '70px' : '20px',
-        overflowY: 'auto',
-        overflowX: 'hidden'
+        position: 'relative',
+        height: '100vh',
+        overflow: 'hidden'
       }}>
-        {renderSeccion()}
-      </div>    </div>
+        {/* Sidebar */}
+        <div style={{
+          width: getResponsiveSize('250px', '240px', '250px'),
+          height: '100vh',
+          backgroundColor: '#f8f9fa',
+          borderRight: '1px solid #dee2e6',
+          position: isMobile() ? 'fixed' : 'fixed',
+          left: isMobile() ? (menuMovilAbierto ? '0' : '-250px') : '0',
+          top: 0,
+          transition: isMobile() ? 'left 0.3s ease' : 'none',
+          zIndex: isMobile() ? 1001 : 1000,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          flexShrink: 0
+        }}>
+          
+          {/* Perfil del mesero */}
+          <div style={{
+            padding: getResponsiveSize('10px', '15px', '20px'),
+            borderBottom: '1px solid #dee2e6',
+            backgroundColor: '#ffffff',
+            flexShrink: 0
+          }}>
+            <div style={{
+              padding: getResponsiveSize('10px', '12px', '15px'),
+              backgroundColor: 'white',
+              borderRadius: '8px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              border: '1px solid #e9ecef'
+            }}>
+              <div style={{ 
+                width: getResponsiveSize('50px', '60px', '70px'),
+                height: getResponsiveSize('50px', '60px', '70px'),
+                margin: '0 auto 10px auto',
+                position: 'relative'
+              }}>
+                <img 
+                  src={userProfile.imagenURL}
+                  alt={userProfile.nombre}
+                  onError={handleImageError}
+                  loading="lazy"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    border: '2px solid #007bff',
+                    backgroundColor: '#f8f9fa'
+                  }}
+                />
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <h3 style={{ 
+                  margin: '0 0 5px 0',
+                  fontSize: getResponsiveSize('14px', '16px', '18px'),
+                  color: '#2c3e50',
+                  fontWeight: '600'
+                }}>
+                  {userProfile.nombre}
+                </h3>
+                <span style={{
+                  display: 'inline-block',
+                  padding: '3px 8px',
+                  backgroundColor: '#ffc107',
+                  color: 'black',
+                  borderRadius: '12px',
+                  fontSize: getResponsiveSize('11px', '12px', '13px'),
+                  fontWeight: '500'
+                }}>
+                  Mesero
+                </span>
+              </div>
+            </div>
+          </div>          {/* Navegación */}
+          <nav style={{
+            padding: getResponsiveSize('10px', '15px', '20px'),
+            flex: 1,
+            overflowY: 'auto'
+          }}>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              <li style={{ marginBottom: getResponsiveSize('8px', '10px', '10px') }}>
+                <button 
+                  onClick={() => {
+                    setSeccionActiva('panel');
+                    if (isMobile()) setMenuMovilAbierto(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: getResponsiveSize('8px', '10px', '10px'),
+                    backgroundColor: seccionActiva === 'panel' ? '#007bff' : '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontSize: getResponsiveSize('13px', '14px', '14px'),
+                    fontWeight: '500',
+                    transition: 'background-color 0.2s'
+                  }}
+                >
+                  📊 Panel Principal
+                </button>
+              </li>
+              <li style={{ marginBottom: getResponsiveSize('8px', '10px', '10px') }}>
+                <button 
+                  onClick={() => {
+                    setSeccionActiva('tomar_orden');
+                    if (isMobile()) setMenuMovilAbierto(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: getResponsiveSize('8px', '10px', '10px'),
+                    backgroundColor: seccionActiva === 'tomar_orden' ? '#28a745' : '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontSize: getResponsiveSize('13px', '14px', '14px'),
+                    fontWeight: '500',
+                    transition: 'background-color 0.2s'
+                  }}
+                >
+                  🍽️ Tomar Orden
+                </button>
+              </li>
+              <li style={{ marginBottom: getResponsiveSize('8px', '10px', '10px') }}>
+                <button 
+                  onClick={() => {
+                    setSeccionActiva('ordenes_proceso');
+                    if (isMobile()) setMenuMovilAbierto(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: getResponsiveSize('8px', '10px', '10px'),
+                    backgroundColor: seccionActiva === 'ordenes_proceso' ? '#ffc107' : '#6c757d',
+                    color: seccionActiva === 'ordenes_proceso' ? 'black' : 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontSize: getResponsiveSize('13px', '14px', '14px'),
+                    fontWeight: '500',
+                    transition: 'background-color 0.2s'
+                  }}
+                >
+                  ⏳ En Proceso ({ordenesEnProceso.length})
+                </button>
+              </li>
+              <li style={{ marginBottom: getResponsiveSize('8px', '10px', '10px') }}>
+                <button 
+                  onClick={() => {
+                    setSeccionActiva('ordenes_cobrar');
+                    if (isMobile()) setMenuMovilAbierto(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: getResponsiveSize('8px', '10px', '10px'),
+                    backgroundColor: seccionActiva === 'ordenes_cobrar' ? '#17a2b8' : '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontSize: getResponsiveSize('13px', '14px', '14px'),
+                    fontWeight: '500',
+                    transition: 'background-color 0.2s'
+                  }}
+                >
+                  💰 Para Cobrar ({ordenesParaCobrar.length})
+                </button>
+              </li>
+            </ul>
+          </nav>          {/* Botón de cerrar sesión - Fixed position */}
+          <div style={{
+            padding: getResponsiveSize('10px', '15px', '20px'),
+            borderTop: '1px solid #dee2e6',
+            backgroundColor: '#f8f9fa',
+            flexShrink: 0,
+            marginTop: 'auto', // This pushes it to the bottom
+            position: 'sticky',
+            bottom: 0
+          }}>
+            <button
+              onClick={handleLogout}
+              style={{
+                width: '100%',
+                padding: getResponsiveSize('10px', '12px', '12px'),
+                backgroundColor: '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                transition: 'background-color 0.2s',
+                fontSize: getResponsiveSize('13px', '14px', '14px'),
+                fontWeight: '500'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#c82333'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#dc3545'}
+            >
+              <span>🚪</span>
+              Cerrar Sesión
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Overlay */}
+        {isMobile() && menuMovilAbierto && (
+          <div
+            onClick={() => setMenuMovilAbierto(false)}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              zIndex: 1000
+            }}
+          />
+        )}        {/* Main Content - Fixed positioning to avoid overlap */}
+        <div style={{ 
+          position: 'absolute',
+          left: isMobile() ? '0' : getResponsiveSize('250px', '240px', '250px'),
+          right: '0',
+          top: '0',
+          bottom: '0',
+          padding: getResponsiveSize('10px', '15px', '20px'),
+          paddingTop: isMobile() ? '70px' : '20px',
+          overflowY: 'auto',
+          overflowX: 'hidden'
+        }}>
+          {renderSeccion()}
+        </div>    </div>
     </>
   );
 }
