@@ -123,7 +123,8 @@ function DashboardMesero() {
           setUserProfile({
             nombre: meseroData.username,
             rol: meseroData.rol,
-            imagenURL: meseroData.imagenURL || DEFAULT_PROFILE_IMAGE
+            imagenURL: meseroData.imagenURL || DEFAULT_PROFILE_IMAGE,
+            sucursal: meseroData.sucursal || 'No asignada'
           });
         }
 
@@ -420,7 +421,8 @@ function DashboardMesero() {
         mesero: orden.mesero,
         estado: 'pendiente_cobro',
         fecha: Timestamp.now(),
-        ordenId: ordenId
+        ordenId: ordenId,
+        sucursal: userProfile.sucursal || 'No asignada'
       };
 
       await addDoc(collection(db, "ventas_pendientes"), ventaData);
@@ -1494,6 +1496,20 @@ function DashboardMesero() {
                 }}>
                   Mesero
                 </span>
+                {userProfile.sucursal && (
+                  <div style={{
+                    marginTop: '8px',
+                    fontSize: getResponsiveSize('11px', '12px', '13px'),
+                    color: '#6c757d',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px'
+                  }}>
+                    <span>📍</span>
+                    <span>{userProfile.sucursal}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>          {/* Navegación */}

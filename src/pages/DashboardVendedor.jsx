@@ -155,7 +155,8 @@ function DashboardVendedor() {
           setUserProfile({
             nombre: vendedorData.username,
             rol: vendedorData.rol,
-            imagenURL: validatedImageUrl
+            imagenURL: validatedImageUrl,
+            sucursal: vendedorData.sucursal || 'No asignada'
           });
         }
 
@@ -266,7 +267,8 @@ function DashboardVendedor() {
         metodoPago: ventaActual.metodoPago,
         fecha: Timestamp.now(), // Usar Timestamp en lugar de Date
         vendedorId: userData.id,
-        vendedorNombre: userData.username
+        vendedorNombre: userData.username,
+        sucursal: userProfile.sucursal || 'No asignada'
       };
 
       // Registrar venta
@@ -935,7 +937,16 @@ function DashboardVendedor() {
                           <p><strong>Cambio:</strong> ${formatearNumero(venta.cambio)}</p>
                         </>
                       )}
-                      <p><strong>Vendedor:</strong> {venta.vendedorNombre}</p>
+                      {venta.mesero ? (
+                        <>
+                          <p><strong>Mesero:</strong> {venta.mesero}</p>
+                          <p><strong>Procesado por:</strong> {venta.vendedorNombre}</p>
+                          {venta.mesa && <p><strong>Mesa:</strong> {venta.mesa}</p>}
+                        </>
+                      ) : (
+                        <p><strong>Vendedor:</strong> {venta.vendedorNombre}</p>
+                      )}
+                      {venta.sucursal && <p><strong>Sucursal:</strong> {venta.sucursal}</p>}
                     </div>
                   </div>
                 ))}
@@ -1446,7 +1457,8 @@ function DashboardVendedor() {
         vendedorId: userData.id,
         vendedorNombre: userData.username,
         mesa: ventaPendiente.mesa,
-        mesero: ventaPendiente.mesero
+        mesero: ventaPendiente.mesero,
+        sucursal: ventaPendiente.sucursal || userProfile.sucursal || 'No asignada'
       };
 
       // Set up for regular sale process
@@ -1699,6 +1711,20 @@ function DashboardVendedor() {
                 }}>
                   {userProfile.rol}
                 </span>
+                {userProfile.sucursal && (
+                  <div style={{
+                    marginTop: '8px',
+                    fontSize: '0.85rem',
+                    color: '#6c757d',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px'
+                  }}>
+                    <span>📍</span>
+                    <span>{userProfile.sucursal}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

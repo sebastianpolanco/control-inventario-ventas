@@ -39,6 +39,12 @@ const CATEGORIAS_PRODUCTOS = [
   'Adiciones'
 ];
 
+const SUCURSALES_DISPONIBLES = [
+  'Local Principal',
+  'Centro',
+  'Norte',
+];
+
 function DashboardAdmin() {
   const navigate = useNavigate();
   const [userProfile, setUserProfile] = useState({
@@ -51,13 +57,7 @@ function DashboardAdmin() {
     imagenURL: 'https://via.placeholder.com/50',  // placeholder image, replace with actual admin image
   });
   const [productos, setProductos] = useState([]);
-  const [vendedores, setVendedores] = useState([{ 
-    username: 'vendedor1',
-    password: '123456',
-    rol: 'vendedor',
-    imagen: null,
-    imagenURL: ''
-  }]);
+  const [vendedores, setVendedores] = useState([]);
   const [nuevoProducto, setNuevoProducto] = useState({ 
     nombre: '', 
     cantidad: '', 
@@ -70,7 +70,8 @@ function DashboardAdmin() {
     username: '',
     password: '',
     rol: 'vendedor',
-    imagenURL: AVATAR_OPTIONS[0] // Valor predeterminado
+    imagenURL: AVATAR_OPTIONS[0], // Valor predeterminado
+    sucursal: SUCURSALES_DISPONIBLES[0] // Sucursal por defecto
   });
   const [editandoProducto, setEditandoProducto] = useState(null);
   const [editandoVendedor, setEditandoVendedor] = useState(null);
@@ -92,6 +93,9 @@ function DashboardAdmin() {
   });
   // Añadir estado para filtro de categoría
   const [filtroCategoria, setFiltroCategoria] = useState('Todas');
+
+  // Añadir estado para filtro de sucursal
+  const [filtroSucursal, setFiltroSucursal] = useState('Todas');
 
   // Añadir estado para las ventas por método de pago
   const [ventasPorMetodoPago, setVentasPorMetodoPago] = useState({
@@ -431,6 +435,7 @@ function DashboardAdmin() {
           password: nuevoVendedor.password,
           rol: nuevoVendedor.rol || 'vendedor',
           imagenURL: nuevoVendedor.imagenURL,
+          sucursal: nuevoVendedor.sucursal || SUCURSALES_DISPONIBLES[0], // Incluir sucursal
           fechaCreacion: new Date()
         };
 
@@ -448,7 +453,8 @@ function DashboardAdmin() {
           username: '',
           password: '',
           rol: 'vendedor',
-          imagenURL: AVATAR_OPTIONS[0]
+          imagenURL: AVATAR_OPTIONS[0],
+          sucursal: SUCURSALES_DISPONIBLES[0]
         });
 
         showToast("Usuario agregado exitosamente!");
@@ -513,10 +519,11 @@ function DashboardAdmin() {
   };
 
   const iniciarEdicionVendedor = (vendedor, index) => {
-    // Aseguramos que tenga una imagenURL, o usamos la primera opción predeterminada
+    // Aseguramos que tenga una imagenURL y sucursal, o usamos las opciones predeterminadas
     const vendedorConImagen = {
       ...vendedor,
       imagenURL: vendedor.imagenURL || AVATAR_OPTIONS[0],
+      sucursal: vendedor.sucursal || SUCURSALES_DISPONIBLES[0],
       index
     };
     setEditandoVendedor(vendedorConImagen);
@@ -530,7 +537,8 @@ function DashboardAdmin() {
         username: editandoVendedor.username,
         password: editandoVendedor.password,
         rol: editandoVendedor.rol,
-        imagenURL: editandoVendedor.imagenURL
+        imagenURL: editandoVendedor.imagenURL,
+        sucursal: editandoVendedor.sucursal
       };
 
       // Actualizar en Firebase
@@ -605,7 +613,7 @@ function DashboardAdmin() {
     }).format(number);
   };
 
-  // Cargar ventas por fecha
+  // Cargar ventas por fecha y sucursal
   const cargarVentasPorFecha = async (startDate, endDate) => {
     try {
       const fechaInicio = new Date(startDate + 'T00:00:00');
@@ -618,11 +626,16 @@ function DashboardAdmin() {
       );
       
       const ventasSnapshot = await getDocs(ventasQuery);
-      const ventasData = ventasSnapshot.docs.map(doc => ({
+      let ventasData = ventasSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         fecha: doc.data().fecha.toDate()
       }));
+
+      // Filtrar por sucursal si no es "Todas"
+      if (filtroSucursal !== 'Todas') {
+        ventasData = ventasData.filter(venta => venta.sucursal === filtroSucursal);
+      }
 
       setVentasDelDia(ventasData);
       setTotalDelDia(ventasData.reduce((sum, v) => sum + v.total, 0));
@@ -633,10 +646,43 @@ function DashboardAdmin() {
     }
   };
 
-  // Add useEffect to watch dateRange changes
+  // Función para agrupar ventas por día
+  const agruparVentasPorDia = (ventas) => {
+    const ventasPorDia = {};
+    
+    ventas.forEach(venta => {
+      // Usar fecha local directamente sin conversión ISO para evitar problemas de zona horaria
+      const fechaFormateada = venta.fecha.toLocaleDateString('es-ES', { 
+        day: '2-digit', 
+        month: '2-digit',
+        timeZone: 'America/Bogota' // Especificar zona horaria de Colombia
+      });
+      
+      if (!ventasPorDia[fechaFormateada]) {
+        ventasPorDia[fechaFormateada] = {
+          fecha: fechaFormateada,
+          total: 0,
+          cantidad: 0
+        };
+      }
+      
+      ventasPorDia[fechaFormateada].total += venta.total;
+      ventasPorDia[fechaFormateada].cantidad += 1;
+    });
+    
+    return Object.values(ventasPorDia).sort((a, b) => {
+      const [dayA, monthA] = a.fecha.split('/');
+      const [dayB, monthB] = b.fecha.split('/');
+      // Usar el año actual en lugar de 2024 fijo
+      const currentYear = new Date().getFullYear();
+      return new Date(`${currentYear}-${monthA}-${dayA}`) - new Date(`${currentYear}-${monthB}-${dayB}`);
+    });
+  };
+
+  // Add useEffect to watch dateRange and filtroSucursal changes
   useEffect(() => {
     cargarVentasPorFecha(dateRange.start, dateRange.end);
-  }, [dateRange]);
+  }, [dateRange, filtroSucursal]);
 
   // Modificar el renderContenido
   const renderContenido = () => {
@@ -1065,6 +1111,27 @@ function DashboardAdmin() {
                 <option value="admin">Administrador</option>
                 <option value="mesero">Mesero</option>
               </select>
+
+              {/* Selector de sucursal - solo para vendedores y meseros */}
+              {(nuevoVendedor.rol === 'vendedor' || nuevoVendedor.rol === 'mesero') && (
+                <select
+                  value={nuevoVendedor.sucursal}
+                  onChange={(e) => setNuevoVendedor({...nuevoVendedor, sucursal: e.target.value})}
+                  required
+                  style={{ 
+                    padding: getResponsiveSize('8px', '10px'),
+                    fontSize: getResponsiveSize('14px', '16px'),
+                    marginBottom: '10px',
+                    border: '1px solid #ced4da',
+                    borderRadius: '4px',
+                    width: '100%'
+                  }}
+                >
+                  {SUCURSALES_DISPONIBLES.map((sucursal, index) => (
+                    <option key={index} value={sucursal}>{sucursal}</option>
+                  ))}
+                </select>
+              )}
               
               {/* Reemplazar la carga de imagen por selección de avatar */}
               <div style={{ marginBottom: '15px' }}>
@@ -1171,6 +1238,27 @@ function DashboardAdmin() {
                         <option value="admin">Administrador</option>
                         <option value="mesero">Mesero</option>
                       </select>
+
+                      {/* Selector de sucursal para edición - solo para vendedores y meseros */}
+                      {(editandoVendedor.rol === 'vendedor' || editandoVendedor.rol === 'mesero') && (
+                        <select
+                          value={editandoVendedor.sucursal || SUCURSALES_DISPONIBLES[0]}
+                          onChange={(e) => setEditandoVendedor({...editandoVendedor, sucursal: e.target.value})}
+                          required
+                          style={{ 
+                            padding: getResponsiveSize('8px', '10px'),
+                            fontSize: getResponsiveSize('14px', '16px'),
+                            marginBottom: '10px',
+                            border: '1px solid #ced4da',
+                            borderRadius: '4px',
+                            width: '100%'
+                          }}
+                        >
+                          {SUCURSALES_DISPONIBLES.map((sucursal, index) => (
+                            <option key={index} value={sucursal}>{sucursal}</option>
+                          ))}
+                        </select>
+                      )}
                       
                       {/* Selección de avatar para edición */}
                       <div style={{ marginBottom: '15px' }}>
@@ -1268,8 +1356,20 @@ function DashboardAdmin() {
                         }}>
                           {((v.rol || 'vendedor').charAt(0).toUpperCase() + (v.rol || 'vendedor').slice(1))}
                         </span>
-                        <button onClick={() => iniciarEdicionVendedor(v, i)}>Editar</button>
-                        <button onClick={() => eliminarVendedor(v)}>Eliminar</button>
+                        {/* Mostrar sucursal solo para vendedores y meseros */}
+                        {((v.rol || 'vendedor') === 'vendedor' || (v.rol || 'vendedor') === 'mesero') && v.sucursal && (
+                          <div style={{ 
+                            marginTop: '5px',
+                            fontSize: '0.85em',
+                            color: '#6c757d'
+                          }}>
+                            📍 <strong>Sucursal:</strong> {v.sucursal}
+                          </div>
+                        )}
+                        <div style={{ marginTop: '8px' }}>
+                          <button onClick={() => iniciarEdicionVendedor(v, i)}>Editar</button>
+                          <button onClick={() => eliminarVendedor(v)}>Eliminar</button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1319,6 +1419,24 @@ function DashboardAdmin() {
                     border: '1px solid #dee2e6'
                   }}
                 />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <label>Sucursal:</label>
+                <select
+                  value={filtroSucursal}
+                  onChange={(e) => setFiltroSucursal(e.target.value)}
+                  style={{
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #dee2e6',
+                    minWidth: '150px'
+                  }}
+                >
+                  <option value="Todas">Todas las sucursales</option>
+                  {SUCURSALES_DISPONIBLES.map((sucursal, index) => (
+                    <option key={index} value={sucursal}>{sucursal}</option>
+                  ))}
+                </select>
               </div>
               <button
                 style={{
@@ -1402,6 +1520,196 @@ function DashboardAdmin() {
                 </div>
               ))}
             </div>
+
+            {/* Gráfica de Barras de Ventas por Día */}
+            {ventasDelDia.length > 0 && (
+              <>
+                <h3>📈 Gráfico de Ventas por Día</h3>
+                <div style={{
+                  backgroundColor: 'white',
+                  border: '1px solid #dee2e6',
+                  borderRadius: '8px',
+                  padding: '20px',
+                  marginBottom: '30px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                  position: 'relative'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'end',
+                    justifyContent: 'space-evenly',
+                    height: '350px',
+                    borderBottom: '2px solid #333',
+                    borderLeft: '2px solid #333',
+                    padding: '20px 20px 40px 60px',
+                    position: 'relative',
+                    overflowX: 'auto',
+                    minWidth: `${agruparVentasPorDia(ventasDelDia).length * 80}px`
+                  }}>
+                    {/* Líneas de referencia del eje Y con valores en dinero */}
+                    {(() => {
+                      const ventasPorDia = agruparVentasPorDia(ventasDelDia);
+                      const maxTotal = Math.max(...ventasPorDia.map(v => v.total), 1);
+                      const step = Math.ceil(maxTotal / 5);
+                      
+                      return [0, step, step * 2, step * 3, step * 4, step * 5].map((valor, index) => (
+                        <div
+                          key={index}
+                          style={{
+                            position: 'absolute',
+                            left: '60px',
+                            right: '20px',
+                            bottom: `${40 + (index * 52)}px`,
+                            borderTop: index === 0 ? 'none' : '1px dashed #ccc',
+                            fontSize: '12px',
+                            color: '#666'
+                          }}
+                        >
+                          <span style={{
+                            position: 'absolute',
+                            left: '-55px',
+                            top: '-8px',
+                            fontSize: '11px',
+                            fontWeight: 'bold'
+                          }}>
+                            ${formatNumber(valor)}
+                          </span>
+                        </div>
+                      ));
+                    })()}
+                    
+                    {agruparVentasPorDia(ventasDelDia).map((dia, index) => {
+                      const ventasPorDia = agruparVentasPorDia(ventasDelDia);
+                      const maxTotal = Math.max(...ventasPorDia.map(v => v.total), 1);
+                      const heightPercentage = (dia.total / maxTotal) * 100;
+                      const barHeight = (heightPercentage * 260) / 100; // 260px es la altura máxima disponible
+                      
+                      return (
+                        <div
+                          key={index}
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            height: '100%',
+                            minWidth: '70px',
+                            justifyContent: 'flex-end'
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: '50px',
+                              height: `${barHeight}px`,
+                              backgroundColor: '#007bff',
+                              borderRadius: '4px 4px 0 0',
+                              marginBottom: '0px',
+                              position: 'relative',
+                              transition: 'all 0.3s ease',
+                              cursor: 'pointer',
+                              boxShadow: '0 2px 4px rgba(0,123,255,0.3)',
+                              border: '1px solid #0056b3'
+                            }}
+                            title={`${dia.fecha}: $${formatNumber(dia.total)} (${dia.cantidad} ventas)`}
+                            onMouseOver={(e) => {
+                              e.currentTarget.style.backgroundColor = '#0056b3';
+                              e.currentTarget.style.transform = 'scale(1.05)';
+                            }}
+                            onMouseOut={(e) => {
+                              e.currentTarget.style.backgroundColor = '#007bff';
+                              e.currentTarget.style.transform = 'scale(1)';
+                            }}
+                          >
+                            <div style={{
+                              position: 'absolute',
+                              top: '-35px',
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              fontSize: '10px',
+                              fontWeight: 'bold',
+                              color: '#333',
+                              whiteSpace: 'nowrap',
+                              backgroundColor: 'rgba(255,255,255,0.9)',
+                              padding: '2px 4px',
+                              borderRadius: '3px',
+                              border: '1px solid #ddd'
+                            }}>
+                              ${formatNumber(dia.total)}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Etiquetas de fechas en el eje X - separadas del gráfico */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-evenly',
+                    marginTop: '10px',
+                    marginLeft: '60px',
+                    marginRight: '20px',
+                    minWidth: `${agruparVentasPorDia(ventasDelDia).length * 80}px`,
+                    overflowX: 'auto'
+                  }}>
+                    {agruparVentasPorDia(ventasDelDia).map((dia, index) => (
+                      <div
+                        key={index}
+                        style={{
+                          minWidth: '70px',
+                          textAlign: 'center',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          color: '#333',
+                          padding: '5px 2px'
+                        }}
+                      >
+                        {dia.fecha}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Eje X label */}
+                  <div style={{
+                    textAlign: 'center',
+                    marginTop: '15px',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    color: '#333'
+                  }}>
+                    📅 Días
+                  </div>
+                  
+                  {/* Eje Y label */}
+                  <div style={{
+                    position: 'absolute',
+                    left: '15px',
+                    top: '50%',
+                    transform: 'rotate(-90deg)',
+                    transformOrigin: 'center',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    color: '#333'
+                  }}>
+                    
+                  </div>
+                  
+                  {/* Información adicional */}
+                  <div style={{
+                    position: 'absolute',
+                    top: '15px',
+                    right: '15px',
+                    fontSize: '12px',
+                    color: '#666',
+                    backgroundColor: '#f8f9fa',
+                    padding: '5px 10px',
+                    borderRadius: '4px',
+                    border: '1px solid #dee2e6'
+                  }}>
+                    Total: ${formatNumber(totalDelDia)} | Ventas: {ventasDelDia.length}
+                  </div>
+                </div>
+              </>
+            )}
             
             {/* Detalles de Ventas por Método de Pago */}
             <div style={{ marginBottom: '30px' }}>
@@ -1426,8 +1734,17 @@ function DashboardAdmin() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>
                             <p style={{ margin: '5px 0' }}><strong>Total:</strong> ${formatNumber(venta.total)}</p>
-                            <p style={{ margin: '5px 0' }}><strong>Vendedor:</strong> {venta.vendedorNombre}</p>
+                            {venta.mesero ? (
+                              <>
+                                <p style={{ margin: '5px 0' }}><strong>Mesero:</strong> {venta.mesero}</p>
+                                <p style={{ margin: '5px 0' }}><strong>Procesado por:</strong> {venta.vendedorNombre}</p>
+                              </>
+                            ) : (
+                              <p style={{ margin: '5px 0' }}><strong>Vendedor:</strong> {venta.vendedorNombre}</p>
+                            )}
                             <p style={{ margin: '5px 0' }}><strong>Fecha:</strong> {venta.fecha.toLocaleString()}</p>
+                            {venta.sucursal && <p style={{ margin: '5px 0' }}><strong>Sucursal:</strong> {venta.sucursal}</p>}
+                            {venta.mesa && <p style={{ margin: '5px 0' }}><strong>Mesa:</strong> {venta.mesa}</p>}
                           </div>
                           <div style={{
                             backgroundColor: metodo.color,
@@ -1512,9 +1829,18 @@ function DashboardAdmin() {
                   backgroundColor: 'white'
                 }}>
                   <p>Total: ${formatNumber(venta.total)}</p>
-                  <p>Vendedor: {venta.vendedorNombre}</p>
+                  {venta.mesero ? (
+                    <>
+                      <p>Mesero: {venta.mesero}</p>
+                      <p>Procesado por: {venta.vendedorNombre}</p>
+                    </>
+                  ) : (
+                    <p>Vendedor: {venta.vendedorNombre}</p>
+                  )}
                   <p>Hora: {venta.fecha.toLocaleTimeString()}</p>
                   <p>Método de Pago: {venta.metodoPago || 'No especificado'}</p>
+                  {venta.sucursal && <p>Sucursal: {venta.sucursal}</p>}
+                  {venta.mesa && <p>Mesa: {venta.mesa}</p>}
                 </div>
               ))}
             </div>
