@@ -120,12 +120,15 @@ function DashboardMesero() {
         
         if (!meseroSnapshot.empty) {
           const meseroData = meseroSnapshot.docs[0].data();
-          setUserProfile({
+          const meseroProfile = {
             nombre: meseroData.username,
             rol: meseroData.rol,
             imagenURL: meseroData.imagenURL || DEFAULT_PROFILE_IMAGE,
             sucursal: meseroData.sucursal || 'No asignada'
-          });
+          };
+          
+          console.log("👤 Perfil de mesero cargado:", meseroProfile);
+          setUserProfile(meseroProfile);
         }
 
         // Cargar productos
@@ -139,9 +142,6 @@ function DashboardMesero() {
 
         // Cargar mesas (crear algunas por defecto si no existen)
         await cargarMesas();
-        
-        // Cargar órdenes en proceso
-        await cargarOrdenesEnProceso();
 
       } catch (error) {
         console.error("Error al cargar datos:", error);
@@ -149,7 +149,15 @@ function DashboardMesero() {
     };
 
     cargarDatos();
-  }, [navigate]);  const cargarMesas = async () => {
+  }, [navigate]);
+
+  // useEffect separado para cargar órdenes cuando el perfil esté disponible
+  useEffect(() => {
+    if (userProfile.sucursal && userProfile.sucursal !== 'No asignada') {
+      console.log("🔄 Cargando órdenes para sucursal:", userProfile.sucursal);
+      cargarOrdenesEnProceso();
+    }
+  }, [userProfile.sucursal]);  const cargarMesas = async () => {
     try {
       const mesasSnapshot = await getDocs(collection(db, "mesas"));
       
@@ -197,9 +205,20 @@ function DashboardMesero() {
 
   const cargarOrdenesEnProceso = async () => {
     try {
+      // Solo cargar órdenes si tenemos la sucursal del mesero
+      if (!userProfile.sucursal || userProfile.sucursal === 'No asignada') {
+        console.log("⚠️ No se puede cargar órdenes: sucursal del mesero no válida");
+        setOrdenesEnProceso([]);
+        setOrdenesParaCobrar([]);
+        return;
+      }
+
+      console.log("🔍 Cargando órdenes para sucursal del mesero:", userProfile.sucursal);
+      
       const ordenesQuery = query(
         collection(db, "ordenes"),
-        where("estado", "in", ["en_proceso", "lista_para_cobrar"])
+        where("estado", "in", ["en_proceso", "lista_para_cobrar"]),
+        where("sucursal", "==", userProfile.sucursal) // Filtrar por sucursal del mesero
       );
       const ordenesSnapshot = await getDocs(ordenesQuery);
       const ordenesData = ordenesSnapshot.docs.map(doc => ({
@@ -207,10 +226,37 @@ function DashboardMesero() {
         ...doc.data()
       }));
       
+      console.log("✅ Órdenes cargadas para sucursal:", ordenesData.length);
+      
       setOrdenesEnProceso(ordenesData.filter(orden => orden.estado === 'en_proceso'));
       setOrdenesParaCobrar(ordenesData.filter(orden => orden.estado === 'lista_para_cobrar'));
     } catch (error) {
       console.error("Error al cargar órdenes:", error);
+      // En caso de error de índice, cargar todas y filtrar en JavaScript
+      if (error.message.includes('index')) {
+        console.log("🔄 Intentando método alternativo sin índice...");
+        try {
+          const ordenesQuery = query(
+            collection(db, "ordenes"),
+            where("estado", "in", ["en_proceso", "lista_para_cobrar"])
+          );
+          const ordenesSnapshot = await getDocs(ordenesQuery);
+          const todasOrdenes = ordenesSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          // Filtrar por sucursal en JavaScript
+          const ordenesFiltradas = todasOrdenes.filter(orden => 
+            orden.sucursal === userProfile.sucursal
+          );
+          
+          setOrdenesEnProceso(ordenesFiltradas.filter(orden => orden.estado === 'en_proceso'));
+          setOrdenesParaCobrar(ordenesFiltradas.filter(orden => orden.estado === 'lista_para_cobrar'));
+        } catch (fallbackError) {
+          console.error("Error en método alternativo:", fallbackError);
+        }
+      }
     }
   };
   // Funciones para manejo de órdenes
@@ -294,7 +340,8 @@ function DashboardMesero() {
         notas: ordenActual.notas,
         mesero: userProfile.nombre,
         estado: 'en_proceso',
-        fecha: Timestamp.now()
+        fecha: Timestamp.now(),
+        sucursal: userProfile.sucursal || 'No asignada' // Incluir sucursal del mesero
       };
 
       await addDoc(collection(db, "ordenes"), ordenData);

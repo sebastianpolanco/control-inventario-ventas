@@ -131,15 +131,145 @@ function DashboardVendedor() {
     setToast({ ...toast, visible: false });
   };
 
+  // Función reutilizable para cargar ventas por sucursal
+  const cargarVentasPorSucursal = async (sucursal) => {
+    console.log("🔍 INICIO cargarVentasPorSucursal - Sucursal recibida:", sucursal);
+    
+    if (!sucursal || sucursal === 'No asignada') {
+      console.log("❌ No se puede cargar ventas, sucursal no válida:", sucursal);
+      // Limpiar datos si no hay sucursal válida
+      setHistorialVentas([]);
+      setVentasDelDia([]);
+      setTotalDelDia(0);
+      setTopProductos([]);
+      setMetodoPagoStats({
+        efectivo: 0,
+        tarjeta: 0,
+        transferencia: 0,
+        nequi: 0,
+        daviplata: 0,
+        otro: 0
+      });
+      return;
+    }
+    
+    try {
+      console.log("🔍 Cargando ventas para sucursal:", sucursal);
+      console.log("📅 Timestamp actual:", new Date().toISOString());
+      
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      const finDelDia = new Date(hoy);
+      finDelDia.setHours(23, 59, 59, 999);
+      
+      console.log("📅 Rango de fechas:", { 
+        inicio: hoy.toISOString(), 
+        fin: finDelDia.toISOString(),
+        inicioTimestamp: Timestamp.fromDate(hoy),
+        finTimestamp: Timestamp.fromDate(finDelDia)
+      });
+      
+      // Primero, verificar todas las ventas sin filtro de sucursal para debug
+      const todasVentasQuery = query(
+        collection(db, "ventas"),
+        where("fecha", ">=", Timestamp.fromDate(hoy)),
+        where("fecha", "<=", Timestamp.fromDate(finDelDia))
+      );
+      
+      console.log("🔎 Ejecutando query para todas las ventas...");
+      const todasVentasSnapshot = await getDocs(todasVentasQuery);
+      const todasVentas = todasVentasSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        fecha: doc.data().fecha.toDate()
+      }));
+      
+      console.log("🔎 Todas las ventas del día encontradas:", todasVentas.length);
+      console.log("🔎 Detalle de todas las ventas:", todasVentas);
+      console.log("🏢 Sucursales encontradas en ventas:", [...new Set(todasVentas.map(v => v.sucursal))]);
+      
+      // Ahora filtrar por sucursal
+      console.log("🔍 Aplicando filtro por sucursal:", sucursal);
+      const ventasQuery = query(
+        collection(db, "ventas"),
+        where("fecha", ">=", Timestamp.fromDate(hoy)),
+        where("fecha", "<=", Timestamp.fromDate(finDelDia))
+        // Comentado temporalmente para evitar error de índice
+        // where("sucursal", "==", sucursal)
+      );
+
+      console.log("🔎 Ejecutando query por fecha únicamente...");
+      const ventasSnapshot = await getDocs(ventasQuery);
+      const todasVentasDelDia = ventasSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        fecha: doc.data().fecha.toDate() // Convertir timestamp a Date
+      }));
+
+      // Filtrar por sucursal en JavaScript
+      console.log("🔍 Filtrando por sucursal en JavaScript (temporal)...");
+      const ventasData = todasVentasDelDia.filter(venta => venta.sucursal === sucursal);
+
+      console.log("✅ RESULTADO: Ventas filtradas para sucursal '" + sucursal + "':", ventasData.length);
+      console.log("� Detalle de ventas filtradas:", ventasData);
+      const totalCalculado = ventasData.reduce((sum, v) => sum + v.total, 0);
+      console.log("💰 Total calculado:", totalCalculado);
+      
+      // Actualizar estados uno por uno con logs
+      console.log("🔄 Actualizando historialVentas...");
+      setHistorialVentas(ventasData);
+      
+      console.log("🔄 Actualizando ventasDelDia...");
+      setVentasDelDia(ventasData);
+      
+      console.log("🔄 Actualizando totalDelDia...");
+      setTotalDelDia(totalCalculado);
+      
+      console.log("🔄 Calculando top productos...");
+      calcularTopProductos(ventasData);
+      
+      console.log("🔄 Calculando estadísticas por método de pago...");
+      calcularEstadisticasPorMetodoPago(ventasData);
+
+      console.log("🔄 Cargando ventas pendientes...");
+      await cargarVentasPendientes();
+      
+      console.log("🔄 Cargando órdenes en proceso...");
+      await cargarOrdenesEnProceso();
+      
+      console.log("✅ COMPLETADO: cargarVentasPorSucursal finalizado exitosamente");
+    } catch (error) {
+      console.error("❌ ERROR en cargarVentasPorSucursal:", error);
+      console.error("❌ Stack trace:", error.stack);
+      // En caso de error, limpiar los datos
+      setHistorialVentas([]);
+      setVentasDelDia([]);
+      setTotalDelDia(0);
+      setTopProductos([]);
+      setMetodoPagoStats({
+        efectivo: 0,
+        tarjeta: 0,
+        transferencia: 0,
+        nequi: 0,
+        daviplata: 0,
+        otro: 0
+      });
+    }
+  };
+
   // Cargar perfil de usuario
   useEffect(() => {
     const cargarDatos = async () => {
       try {
+        console.log("🔄 Iniciando carga de datos del vendedor...");
         const userData = JSON.parse(localStorage.getItem('user'));
         if (!userData) {
+          console.log("❌ No hay datos de usuario, redirigiendo al login");
           navigate('/');
           return;
         }
+
+        console.log("👤 Datos de usuario encontrados:", userData);
 
         // Cargar perfil del vendedor
         const vendedorQuery = query(
@@ -152,15 +282,32 @@ function DashboardVendedor() {
           const vendedorData = vendedorSnapshot.docs[0].data();
           const validatedImageUrl = await validateAndLoadImage(vendedorData.imagenURL);
           
-          setUserProfile({
+          const userProfileData = {
             nombre: vendedorData.username,
             rol: vendedorData.rol,
             imagenURL: validatedImageUrl,
             sucursal: vendedorData.sucursal || 'No asignada'
-          });
+          };
+          
+          console.log("✅ Perfil de usuario cargado:", userProfileData);
+          console.log("🏢 Sucursal asignada:", userProfileData.sucursal);
+          
+          // Establecer el perfil primero
+          setUserProfile(userProfileData);
+          
+          // Cargar ventas INMEDIATAMENTE después de establecer el perfil
+          console.log("🔄 Cargando ventas inmediatamente para sucursal:", userProfileData.sucursal);
+          if (userProfileData.sucursal && userProfileData.sucursal !== 'No asignada') {
+            await cargarVentasPorSucursal(userProfileData.sucursal);
+          } else {
+            console.log("⚠️ No se puede cargar ventas: sucursal no válida");
+          }
+        } else {
+          console.log("❌ No se encontró información del vendedor");
         }
 
         // Cargar productos del inventario
+        console.log("📦 Cargando productos...");
         const productosSnapshot = await getDocs(collection(db, "productos"));
         const productosData = productosSnapshot.docs.map(doc => ({
           id: doc.id,
@@ -169,40 +316,30 @@ function DashboardVendedor() {
           categoria: doc.data().categoria || 'Sin categoría' // Asegurar que todos los productos tengan categoría
         }));
         setProductos(productosData);
-
-        // Cargar ventas del día
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-        const ventasQuery = query(
-          collection(db, "ventas"),
-          where("fecha", ">=", hoy)
-        ); // Removemos el filtro por vendedorId temporalmente para debug
-
-        const ventasSnapshot = await getDocs(ventasQuery);
-        const ventasData = ventasSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          fecha: doc.data().fecha.toDate() // Convertir timestamp a Date
-        }));
-
-        console.log("Ventas cargadas:", ventasData); // Debug
-        setHistorialVentas(ventasData);
-        setVentasDelDia(ventasData);
-        setTotalDelDia(ventasData.reduce((sum, v) => sum + v.total, 0));
-        calcularTopProductos(ventasData);
-        calcularEstadisticasPorMetodoPago(ventasData);
-
-        // Load pending orders from waiters
-        await cargarVentasPendientes();
-        
-        // Cargar órdenes en proceso de meseros
-        await cargarOrdenesEnProceso();
+        console.log("✅ Productos cargados:", productosData.length);
       } catch (error) {
-        console.error("Error detallado al cargar datos:", error);
+        console.error("❌ Error detallado al cargar datos:", error);
       }
     };
     cargarDatos();
   }, [navigate]);
+
+  // useEffect para monitorear cambios en los estados de ventas (debugging)
+  useEffect(() => {
+    console.log("📊 MONITOR - Cambio en ventasDelDia:", {
+      cantidad: ventasDelDia.length,
+      total: totalDelDia,
+      timestamp: new Date().toISOString()
+    });
+  }, [ventasDelDia, totalDelDia]);
+
+  useEffect(() => {
+    console.log("👤 MONITOR - Cambio en userProfile:", {
+      nombre: userProfile.nombre,
+      sucursal: userProfile.sucursal,
+      timestamp: new Date().toISOString()
+    });
+  }, [userProfile]);
 
   const agregarProductoVenta = (producto) => {
     if (producto.cantidadVenta >= producto.cantidad) {
@@ -1431,14 +1568,51 @@ function DashboardVendedor() {
   // Add function to load pending orders from waiters
   const cargarVentasPendientes = async () => {
     try {
-      const ventasPendientesSnapshot = await getDocs(collection(db, "ventas_pendientes"));
+      // Solo cargar ventas pendientes si tenemos la sucursal del vendedor
+      if (!userProfile.sucursal || userProfile.sucursal === 'No asignada') {
+        console.log("⚠️ No se puede cargar ventas pendientes: sucursal del vendedor no válida");
+        setVentasPendientes([]);
+        return;
+      }
+
+      console.log("🔍 Cargando ventas pendientes para sucursal del vendedor:", userProfile.sucursal);
+      
+      // Filtrar ventas pendientes por sucursal del vendedor
+      const ventasPendientesQuery = query(
+        collection(db, "ventas_pendientes"),
+        where("sucursal", "==", userProfile.sucursal)
+      );
+      
+      const ventasPendientesSnapshot = await getDocs(ventasPendientesQuery);
       const ventasPendientesData = ventasPendientesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+      
+      console.log("✅ Ventas pendientes cargadas para sucursal:", ventasPendientesData.length);
       setVentasPendientes(ventasPendientesData);
     } catch (error) {
       console.error("Error al cargar ventas pendientes:", error);
+      // En caso de error de índice, cargar todas y filtrar en JavaScript
+      if (error.message.includes('index')) {
+        console.log("🔄 Intentando método alternativo sin índice...");
+        try {
+          const ventasPendientesSnapshot = await getDocs(collection(db, "ventas_pendientes"));
+          const todasVentasPendientes = ventasPendientesSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          // Filtrar por sucursal en JavaScript
+          const ventasFiltradas = todasVentasPendientes.filter(venta => 
+            venta.sucursal === userProfile.sucursal
+          );
+          
+          setVentasPendientes(ventasFiltradas);
+        } catch (fallbackError) {
+          console.error("Error en método alternativo:", fallbackError);
+        }
+      }
     }
   };
   // Add function to process waiter order
@@ -1481,20 +1655,58 @@ function DashboardVendedor() {
   // Añadir función para cargar órdenes en proceso de meseros
   const cargarOrdenesEnProceso = async () => {
     try {
+      // Solo cargar órdenes si tenemos la sucursal del vendedor
+      if (!userProfile.sucursal || userProfile.sucursal === 'No asignada') {
+        console.log("⚠️ No se puede cargar órdenes en proceso: sucursal del vendedor no válida");
+        setOrdenesEnProceso([]);
+        return;
+      }
+
+      console.log("🔍 Cargando órdenes en proceso para sucursal del vendedor:", userProfile.sucursal);
+      
+      // Filtrar órdenes por sucursal del vendedor
       const ordenesQuery = query(
         collection(db, "ordenes"),
-        where("estado", "in", ["en_proceso", "lista_para_cobrar"])
+        where("estado", "in", ["en_proceso", "lista_para_cobrar"]),
+        where("sucursal", "==", userProfile.sucursal)
       );
+      
       const ordenesSnapshot = await getDocs(ordenesQuery);
       const ordenesData = ordenesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
       
+      console.log("✅ Órdenes en proceso cargadas para sucursal:", ordenesData.length);
       setOrdenesEnProceso(ordenesData);
     } catch (error) {
       console.error("Error al cargar órdenes en proceso:", error);
-      showToast('Error al cargar órdenes en proceso', 'error');
+      // En caso de error de índice, cargar todas y filtrar en JavaScript
+      if (error.message.includes('index')) {
+        console.log("🔄 Intentando método alternativo sin índice...");
+        try {
+          const ordenesQuery = query(
+            collection(db, "ordenes"),
+            where("estado", "in", ["en_proceso", "lista_para_cobrar"])
+          );
+          const ordenesSnapshot = await getDocs(ordenesQuery);
+          const todasOrdenes = ordenesSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          // Filtrar por sucursal en JavaScript
+          const ordenesFiltradas = todasOrdenes.filter(orden => 
+            orden.sucursal === userProfile.sucursal
+          );
+          
+          setOrdenesEnProceso(ordenesFiltradas);
+        } catch (fallbackError) {
+          console.error("Error en método alternativo:", fallbackError);
+        }
+      } else {
+        showToast('Error al cargar órdenes en proceso', 'error');
+      }
     }
   };
 

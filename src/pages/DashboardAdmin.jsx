@@ -673,7 +673,7 @@ function DashboardAdmin() {
     return Object.values(ventasPorDia).sort((a, b) => {
       const [dayA, monthA] = a.fecha.split('/');
       const [dayB, monthB] = b.fecha.split('/');
-      // Usar el año actual en lugar de 2024 fijo
+      // Usar el año actual 
       const currentYear = new Date().getFullYear();
       return new Date(`${currentYear}-${monthA}-${dayA}`) - new Date(`${currentYear}-${monthB}-${dayB}`);
     });
